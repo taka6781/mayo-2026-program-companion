@@ -1,0 +1,10 @@
+{
+  "name":"Mayo 2026 Program Companion",
+  "short_name":"Mayo 2026",
+  "start_url":"./",
+  "display":"standalone",
+  "background_color":"#F5F7FA",
+  "theme_color":"#173A63",
+  "description":"Program companion prototype for Mayo 2026",
+  "icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}

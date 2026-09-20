@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#173A63" />
+  <meta name="description" content="Mayo 2026 Program Companion prototype" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>Mayo 2026 Program Companion</title>
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Mayo 2026</div>
+        <h1 id="pageTitle">Home</h1>
+      </div>
+      <div class="top-actions"><span id="syncBadge" class="sync-badge local">Local Demo</span><button id="roleBadge" class="role-badge" title="Account / role">Participant</button></div>
+    </header>
+
+    <main id="view" class="view" aria-live="polite"></main>
+
+    <nav class="bottom-nav" aria-label="Primary navigation">
+      <button data-route="home" class="nav-item active"><span>⌂</span><small>Home</small></button>
+      <button data-route="schedule" class="nav-item"><span>▣</span><small>Schedule</small></button>
+      <button data-route="challenge" class="nav-item"><span>◆</span><small>Challenge</small></button>
+      <button data-route="people" class="nav-item"><span>◉</span><small>People</small></button>
+      <button data-route="messages" class="nav-item"><span>✉</span><small>Messages</small><b id="messageBadge" class="badge hidden">0</b></button>
+      <button data-route="more" class="nav-item"><span>☰</span><small>More</small></button>
+    </nav>
+  </div>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-card">
+      <button id="modalClose" class="modal-close" aria-label="Close">×</button>
+      <div id="modalContent"></div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="cloud.js"></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
