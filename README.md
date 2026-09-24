@@ -1,3 +1,9 @@
+# Mayo 2026 Program Companion — Beta v6
+
+This build adds inline People profiles/actions, admin-only admin tools, compact account controls, privacy-preserving Quick Polls with history/manual or scheduled close, and updated Presentation Timer alerts.
+
+**Important:** Run `Mayo_2026_Supabase_Poll_Privacy_v6.sql` in Supabase SQL Editor before deploying v6.
+
 # Mayo 2026 Program Companion — GitHub Pages Beta v5
 
 

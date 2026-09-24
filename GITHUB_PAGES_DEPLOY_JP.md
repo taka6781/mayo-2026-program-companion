@@ -91,3 +91,18 @@ Supabase Authentication > URL Configuration のRedirect URLsに `https://mayo202
 - More画面からPrivacy Notice / Terms of Useを再確認できる
 
 ※ Privacy/Termsの文面は実務向けドラフトです。必要に応じて正式公開前に法務レビューを行ってください。
+
+## v6で最初に必要なSQL更新（重要）
+GitHubへv6をアップロードする前に、Supabaseの **SQL Editor** で
+`Mayo_2026_Supabase_Poll_Privacy_v6.sql` を実行してください。
+
+このSQLはQuick Pollを次の仕様に変更します。
+- Participantは自分の投票内容だけ参照可能
+- Participantは投票中の途中集計を見られない
+- Adminはリアルタイム集計を確認可能
+- Adminは手動で `Close & Publish Results` が可能
+- Poll作成時に任意の自動締切時刻を指定可能
+- 締切後はParticipantにも集計結果を表示
+- 過去Pollで自分が何に投票したか確認可能
+
+SQL実行後、ZIP内のWebファイルをGitHub repository rootへ上書きしてください。

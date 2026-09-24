@@ -135,7 +135,7 @@
       client.from('announcements').select('*').order('created_at',{ascending:false}),
       client.from('announcement_reads').select('announcement_id,read_at').eq('profile_id',uid),
       client.from('conversation_members').select('conversation_id,last_read_at,conversations(id,conversation_type,title,team_id,created_at)').eq('profile_id',uid),
-      client.from('polls').select('id,question,is_open,created_at').eq('is_open',true).order('created_at',{ascending:false}),
+      client.from('polls').select('id,question,is_open,results_published,closes_at,closed_at,created_at').order('created_at',{ascending:false}),
       client.from('poll_options').select('id,poll_id,label'),
       client.from('poll_votes').select('poll_id,option_id,profile_id')
     ]);
@@ -184,11 +184,22 @@
       }
     }
 
-    const polls=(pollsR.data||[]).map(p=>({
-      id:p.id,question:p.question,isOpen:p.is_open,
-      options:(pollOptionsR.data||[]).filter(o=>o.poll_id===p.id).map(o=>({id:o.id,label:o.label,votes:(pollVotesR.data||[]).filter(v=>v.option_id===o.id).length})),
-      myVote:(pollVotesR.data||[]).find(v=>v.poll_id===p.id&&v.profile_id===uid)?.option_id||null
-    }));
+    const polls=[];
+    for (const p of (pollsR.data||[])) {
+      const rawVotes=(pollVotesR.data||[]).filter(v=>v.poll_id===p.id);
+      let counts={};
+      const shouldShowResults=(me?.role==='admin') || p.results_published || (p.closes_at && new Date(p.closes_at)<=new Date());
+      if(shouldShowResults){
+        const {data:resultRows,error:resultErr}=await client.rpc('get_poll_results',{target_poll:p.id});
+        if(resultErr) throw resultErr;
+        (resultRows||[]).forEach(r=>{counts[r.option_id]=Number(r.votes)||0;});
+      }
+      polls.push({
+        id:p.id,question:p.question,isOpen:p.is_open,resultsPublished:p.results_published,closesAt:p.closes_at,closedAt:p.closed_at,createdAt:p.created_at,
+        options:(pollOptionsR.data||[]).filter(o=>o.poll_id===p.id).map(o=>({id:o.id,label:o.label,votes:counts[o.id]||0})),
+        myVote:rawVotes.find(v=>v.profile_id===uid)?.option_id||null
+      });
+    }
 
     return {
       ...structuredClone(seed),
@@ -255,8 +266,8 @@
     if(error) throw error;
     return true;
   }
-  async function createPoll(question,options) {
-    const {data,error}=await client.from('polls').insert({question,is_open:true,created_by:session.user.id}).select('id').single();
+  async function createPoll(question,options,closesAt=null) {
+    const {data,error}=await client.from('polls').insert({question,is_open:true,results_published:false,closes_at:closesAt||null,created_by:session.user.id}).select('id').single();
     if(error) throw error;
     const rows=(options||[]).map(label=>({poll_id:data.id,label}));
     if(rows.length){
@@ -264,6 +275,10 @@
       if(optionError) throw optionError;
     }
     return data.id;
+  }
+  async function closePoll(pollId) {
+    const {error}=await client.from('polls').update({is_open:false,results_published:true,closed_at:new Date().toISOString()}).eq('id',pollId);
+    if(error) throw error;
   }
 
   function subscribe(onChange) {
@@ -292,7 +307,7 @@
   function getConfig(){ return cfg(); }
 
   window.MayoCloud={
-    configured,wantsCloud,init,sendMagicLink,signInWithPassword,requestPasswordReset,updatePassword,signUpWithPassword,signOut,getSession,loadState,completeMission,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,createMission,createSchedule,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,votePoll,subscribe,
+    configured,wantsCloud,init,sendMagicLink,signInWithPassword,requestPasswordReset,updatePassword,signUpWithPassword,signOut,getSession,loadState,completeMission,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,createMission,createSchedule,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,closePoll,votePoll,subscribe,
     saveConfig,clearConfig,getConfig,
     get client(){return client;},get session(){return session;},get lastAuthEvent(){return lastAuthEvent;}
   };
