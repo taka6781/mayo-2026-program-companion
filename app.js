@@ -369,6 +369,32 @@ function renderMore(){
   $('#editProfile').onclick=editMyProfile;$('#morePrivacy').onclick=openPrivacyNotice;$('#moreTerms').onclick=openTermsOfUse;
   if($('#signOutBtn'))$('#signOutBtn').onclick=async()=>{await MayoCloud.signOut();renderLogin();};
 }
+function editMyProfile(){
+  const u=currentUser();
+  openModal(`<h2 id="modalTitle">Edit My Profile</h2><div class="form-group"><label>Name</label><input id="pName" value="${esc(u.name)}"></div><div class="form-group"><label>Organization</label><input id="pOrg" value="${esc(u.org)}"></div><div class="form-group"><label>Title / Role</label><input id="pTitle" value="${esc(u.title)}"></div><div class="form-group"><label>Interests</label><input id="pInterests" value="${esc(u.interests)}"></div><div class="form-group"><label>About me</label><textarea id="pBio">${esc(u.bio)}</textarea></div><button class="btn pink full" id="saveProfile">Save Profile</button>`);
+  $('#saveProfile').onclick=async()=>{
+    const values={
+      fullName:$('#pName').value.trim(),
+      organization:$('#pOrg').value.trim(),
+      title:$('#pTitle').value.trim(),
+      interests:$('#pInterests').value.trim(),
+      bio:$('#pBio').value.trim()
+    };
+    if(!values.fullName)return alert('Enter your name.');
+    try{
+      if(backendMode==='supabase'){
+        await MayoCloud.updateProfile(values);
+        await refreshCloudState({renderPage:false});
+      }else{
+        Object.assign(u,{name:values.fullName,org:values.organization,title:values.title,interests:values.interests,bio:values.bio,initials:values.fullName.split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase()});
+        save();
+      }
+      closeModal();
+      render();
+    }catch(e){showError(e)}
+  };
+}
+
 function toolCard(id,icon,title,sub){return `<button class="card tool-card clickable" data-tool="${id}"><div class="big">${icon}</div><b>${title}</b><small>${sub}</small></button>`}
 function openTool(id){if(id==='grouping')toolGrouping();if(id==='timer')toolTimer();if(id==='random')toolRandom();if(id==='poll')toolPoll();}
 function toolGrouping(){
