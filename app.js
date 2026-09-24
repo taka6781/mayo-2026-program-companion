@@ -43,6 +43,23 @@ let timer={total:180,remaining:180,running:false};
 let backendMode='local';
 let cloudRefreshing=false;
 
+const recoveryModeKey='mayo2026PasswordRecoveryMode';
+function urlHasRecoveryMarker(){
+  const raw=(window.location.search+' '+window.location.hash).toLowerCase();
+  return raw.includes('type=recovery') || raw.includes('type%3drecovery');
+}
+function recoveryModeActive(){
+  return urlHasRecoveryMarker() || sessionStorage.getItem(recoveryModeKey)==='1';
+}
+function enterRecoveryMode(){
+  sessionStorage.setItem(recoveryModeKey,'1');
+}
+function exitRecoveryMode(){
+  sessionStorage.removeItem(recoveryModeKey);
+}
+// Capture the recovery marker before Supabase consumes/cleans the URL.
+if(urlHasRecoveryMarker()) enterRecoveryMode();
+
 function loadLocalState(){try{const raw=localStorage.getItem(storageKey);return raw?JSON.parse(raw):structuredClone(seed)}catch(e){return structuredClone(seed)}}
 function save(){if(backendMode==='local')localStorage.setItem(storageKey,JSON.stringify(state));updateBadge();}
 function currentUser(){return state.people.find(p=>p.id===state.currentUserId)||{id:state.currentUserId,name:'Participant',initials:'P',org:'',title:'',interests:'',team:'',bio:''}}
@@ -199,9 +216,17 @@ function renderPasswordRecovery(){
       <div class="form-group"><label>New password</label><input id="newPassword" type="password" autocomplete="new-password" placeholder="At least 6 characters"></div>
       <div class="form-group"><label>Confirm new password</label><input id="newPassword2" type="password" autocomplete="new-password" placeholder="Re-enter your password"></div>
       <button class="btn pink full" id="updatePasswordBtn">Update Password</button>
+      <button class="btn ghost full" id="cancelRecoveryBtn">Cancel and return to Sign In</button>
       <div id="updatePasswordStatus" class="muted center auth-status"></div>
     </div>
   </section>`;
+  enterRecoveryMode();
+  $('#cancelRecoveryBtn').onclick=async()=>{
+    exitRecoveryMode();
+    try{history.replaceState({},document.title,window.location.pathname);}catch(_e){}
+    try{await MayoCloud.signOut();}catch(_e){}
+    renderLogin();
+  };
   $('#updatePasswordBtn').onclick=async()=>{
     const p1=$('#newPassword').value,p2=$('#newPassword2').value;
     if(p1.length<6)return alert('Use a password with at least 6 characters.');
@@ -210,6 +235,7 @@ function renderPasswordRecovery(){
     try{
       await MayoCloud.updatePassword(p1);
       $('#updatePasswordStatus').innerHTML='<b>Password updated successfully.</b><br>Returning to Sign In…';
+      exitRecoveryMode();
       try{history.replaceState({},document.title,window.location.pathname);}catch(_e){}
       await MayoCloud.signOut();
       setTimeout(()=>renderLogin(),700);
@@ -357,7 +383,8 @@ async function bootstrap(){
     const result=await window.MayoCloud.init();
     backendMode=result.mode;
     if(backendMode==='supabase'){
-      if(window.MayoCloud.lastAuthEvent==='PASSWORD_RECOVERY'){renderPasswordRecovery();return;}
+      if(window.MayoCloud.lastAuthEvent==='PASSWORD_RECOVERY') enterRecoveryMode();
+      if(recoveryModeActive()){renderPasswordRecovery();return;}
       if(!result.session){renderLogin();return;}
       await refreshCloudState({renderPage:false});window.MayoCloud.subscribe(()=>refreshCloudState());render();
     }else{state=loadLocalState();setSyncBadge('Local Demo','local');render();}
@@ -367,6 +394,13 @@ async function bootstrap(){
 $$('.nav-item').forEach(b=>b.onclick=()=>navTo(b.dataset.route));
 $('#modalClose').onclick=closeModal;$('#modal').onclick=e=>{if(e.target.id==='modal')closeModal()};
 $('#roleBadge').onclick=showAccount;
-window.addEventListener('mayo-auth-changed',async(e)=>{if(backendMode!=='supabase')return;if(e?.detail?.event==='PASSWORD_RECOVERY'){renderPasswordRecovery();return;}const s=await MayoCloud.getSession();if(s){await refreshCloudState();MayoCloud.subscribe(()=>refreshCloudState());}else renderLogin();});
+window.addEventListener('mayo-auth-changed',async(e)=>{
+  if(backendMode!=='supabase')return;
+  if(e?.detail?.event==='PASSWORD_RECOVERY') enterRecoveryMode();
+  if(recoveryModeActive()){renderPasswordRecovery();return;}
+  const s=await MayoCloud.getSession();
+  if(s){await refreshCloudState();MayoCloud.subscribe(()=>refreshCloudState());}
+  else renderLogin();
+});
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));
 bootstrap();

@@ -76,3 +76,7 @@ GitHub Pagesの標準URLで動作確認が終わってから、独自サブド�
 5. 更新後、Sign In画面から新しいPasswordでログインします。
 
 Supabase Authentication > URL Configuration のRedirect URLsに `https://mayo2026.planex-bp.com/**` が残っていることを確認してください。
+
+
+## v4確認項目
+パスワード再設定メールのリンクを開いた後、Choose New Password画面が自動でHomeへ遷移せず固定されることを確認してください。新しいパスワードを保存するとSign In画面へ戻ります。

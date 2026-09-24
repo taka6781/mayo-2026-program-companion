@@ -28,3 +28,9 @@ Participant self-registration is enabled with full name, optional organization, 
 - Recovery link returns to the app and opens a Choose New Password screen.
 - After password update, the user is signed out and can sign in with the new password.
 - Ensure the app URL is included in Supabase Authentication > URL Configuration > Redirect URLs.
+
+
+## v4 password recovery lock
+- Keeps the Choose New Password screen active after Supabase establishes the recovery session.
+- Uses sessionStorage to remember recovery mode even if Supabase cleans the recovery URL.
+- Clears recovery mode only after a successful password update or explicit cancel.
