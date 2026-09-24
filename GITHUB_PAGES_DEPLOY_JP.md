@@ -66,3 +66,13 @@ GitHub Pages URLをシークレットウィンドウで開き、以下を確認�
 ## 6. 独自ドメインはGitHub Pages確認後
 GitHub Pagesの標準URLで動作確認が終わってから、独自サブドメインを設定します。
 会社HPのBluehostは変更せず、Mayo用サブドメインだけGitHub PagesへCNAMEで向けます。
+
+
+## v3 パスワード再設定テスト
+1. Sign In画面で **Forgot password?** を押します。
+2. 登録済みメールアドレスを入力し、Password Reset Linkを送信します。
+3. `no-reply@auth.planex-bp.com` から届くメールを開きます（Outlook/HotmailはJunk/Spamも確認）。
+4. リンクからアプリに戻り、新しいPasswordを2回入力します。
+5. 更新後、Sign In画面から新しいPasswordでログインします。
+
+Supabase Authentication > URL Configuration のRedirect URLsに `https://mayo2026.planex-bp.com/**` が残っていることを確認してください。

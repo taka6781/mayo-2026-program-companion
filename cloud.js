@@ -1,6 +1,7 @@
 (() => {
   let client = null;
   let session = null;
+  let lastAuthEvent = null;
   let realtimeChannel = null;
   let refreshTimer = null;
 
@@ -60,7 +61,7 @@
     const {data,error} = await client.auth.getSession();
     if (error) throw error;
     session = data.session;
-    client.auth.onAuthStateChange((_event,newSession)=>{session=newSession; window.dispatchEvent(new CustomEvent('mayo-auth-changed'));});
+    client.auth.onAuthStateChange((event,newSession)=>{lastAuthEvent=event;session=newSession; window.dispatchEvent(new CustomEvent('mayo-auth-changed',{detail:{event,session:newSession}}));});
     return {mode:'supabase', configured:true, session};
   }
 
@@ -76,6 +77,33 @@
     if(error) throw error;
     session=data.session;
     return data.session;
+  }
+  async function requestPasswordReset(email) {
+    if (!client) throw new Error('Supabase is not configured.');
+    const redirect = cfg().authRedirectUrl || window.location.href.split('#')[0].split('?')[0];
+    const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:redirect});
+    if(error) throw error;
+  }
+  async function updatePassword(password) {
+    if (!client) throw new Error('Supabase is not configured.');
+    const {data,error}=await client.auth.updateUser({password});
+    if(error) throw error;
+    return data.user;
+  }
+  async function signUpWithPassword({email,password,fullName,organization=''}) {
+    if (!client) throw new Error('Supabase is not configured.');
+    const redirect = cfg().authRedirectUrl || window.location.href.split('#')[0].split('?')[0];
+    const {data,error}=await client.auth.signUp({
+      email,
+      password,
+      options:{
+        emailRedirectTo:redirect,
+        data:{full_name:fullName||'',organization:organization||''}
+      }
+    });
+    if(error) throw error;
+    session=data.session || null;
+    return data;
   }
   async function signOut() {
     if (!client) return;
@@ -264,8 +292,8 @@
   function getConfig(){ return cfg(); }
 
   window.MayoCloud={
-    configured,wantsCloud,init,sendMagicLink,signInWithPassword,signOut,getSession,loadState,completeMission,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,createMission,createSchedule,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,votePoll,subscribe,
+    configured,wantsCloud,init,sendMagicLink,signInWithPassword,requestPasswordReset,updatePassword,signUpWithPassword,signOut,getSession,loadState,completeMission,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,createMission,createSchedule,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,votePoll,subscribe,
     saveConfig,clearConfig,getConfig,
-    get client(){return client;},get session(){return session;}
+    get client(){return client;},get session(){return session;},get lastAuthEvent(){return lastAuthEvent;}
   };
 })();

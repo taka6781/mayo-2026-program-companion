@@ -73,11 +73,150 @@ function render(){
 }
 
 function renderLogin(){
-  document.body.classList.add('auth-screen');setTitle('Sign In');$('#roleBadge').classList.add('hidden');setSyncBadge('Cloud Beta','cloud');
-  $('#view').innerHTML=`<section class="auth-wrap"><div class="hero"><div class="eyebrow" style="color:#FFD5E6">Mayo 2026 Program Companion</div><h2>Welcome</h2><p>Sign in with your program email to continue.</p></div><div class="card auth-card"><h3>Email sign-in</h3><p class="muted">We’ll send you a secure magic link. No password is required.</p><div class="form-group"><label>Email</label><input id="loginEmail" type="email" placeholder="you@example.com" autocomplete="email"></div><button class="btn pink full" id="sendMagic">Send Magic Link</button><div id="loginStatus" class="muted center" style="margin-top:12px"></div><details style="margin-top:18px"><summary class="muted">Email + Password</summary><div class="form-group" style="margin-top:12px"><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password"></div><button class="btn ghost full" id="passwordSignIn">Sign in with password</button></details></div></section>`;
-  $('#sendMagic').onclick=async()=>{const email=$('#loginEmail').value.trim();if(!email)return alert('Enter your email.');const btn=$('#sendMagic');btn.disabled=true;$('#loginStatus').textContent='Sending…';try{await window.MayoCloud.sendMagicLink(email);$('#loginStatus').innerHTML='<b>Check your email.</b><br>Open the Mayo 2026 sign-in link on this device.';}catch(e){showError(e);$('#loginStatus').textContent='Could not send the sign-in link.';}finally{btn.disabled=false;}};
-  $('#passwordSignIn').onclick=async()=>{const email=$('#loginEmail').value.trim(),password=$('#loginPassword').value;if(!email||!password)return alert('Enter email and password.');const btn=$('#passwordSignIn');btn.disabled=true;try{await MayoCloud.signInWithPassword(email,password);await refreshCloudState();MayoCloud.subscribe(()=>refreshCloudState());}catch(e){showError(e);}finally{btn.disabled=false;}};
+  document.body.classList.add('auth-screen');setTitle('Welcome');$('#roleBadge').classList.add('hidden');setSyncBadge('Cloud Beta','cloud');
+  $('#view').innerHTML=`<section class="auth-wrap">
+    <div class="hero">
+      <div class="eyebrow" style="color:#FFD5E6">Mayo 2026 Program Companion</div>
+      <h2>Welcome</h2>
+      <p>Create your account once, then use your email and password to sign in.</p>
+    </div>
+    <div class="card auth-card">
+      <div class="auth-switch" role="tablist" aria-label="Account access">
+        <button class="auth-switch-btn active" id="showCreateAccount" type="button">Create account</button>
+        <button class="auth-switch-btn" id="showSignIn" type="button">Sign in</button>
+      </div>
+
+      <div id="createAccountPanel">
+        <h3>Create your account</h3>
+        <p class="muted">Use the email address you use for the Mayo 2026 program.</p>
+        <div class="form-group"><label>Full name</label><input id="signupName" type="text" placeholder="First Last" autocomplete="name"></div>
+        <div class="form-group"><label>Organization <span class="muted" style="font-weight:500">(optional)</span></label><input id="signupOrg" type="text" placeholder="Organization" autocomplete="organization"></div>
+        <div class="form-group"><label>Email</label><input id="signupEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>
+        <div class="form-group"><label>Password</label><input id="signupPassword" type="password" placeholder="Create a password" autocomplete="new-password"></div>
+        <div class="form-group"><label>Confirm password</label><input id="signupPassword2" type="password" placeholder="Re-enter your password" autocomplete="new-password"></div>
+        <div class="email-notice">
+          <b>After you register, check your email to confirm your account.</b><br>
+          The confirmation email will come from <b>no-reply@auth.planex-bp.com</b>.<br>
+          <span>If you use Outlook or Hotmail, please also check your Junk/Spam folder.</span>
+        </div>
+        <button class="btn pink full" id="createAccountBtn">Create Account</button>
+        <div id="signupStatus" class="muted center auth-status"></div>
+      </div>
+
+      <div id="signInPanel" class="hidden">
+        <h3>Sign in</h3>
+        <p class="muted">Already registered? Sign in with your email and password.</p>
+        <div class="form-group"><label>Email</label><input id="loginEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>
+        <div class="form-group"><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password"></div>
+        <button class="btn pink full" id="passwordSignIn">Sign In</button>
+        <button class="btn ghost full" id="forgotPasswordBtn" type="button">Forgot password?</button>
+        <div id="loginStatus" class="muted center auth-status"></div>
+        <details class="magic-link-details">
+          <summary>Prefer a one-time email link?</summary>
+          <p class="muted">We can send a secure Magic Link to the email above.</p>
+          <div class="email-notice compact">The email comes from <b>no-reply@auth.planex-bp.com</b>. Outlook/Hotmail users should check Junk/Spam if it is not in the Inbox.</div>
+          <button class="btn ghost full" id="sendMagic">Send Magic Link</button>
+        </details>
+      </div>
+    </div>
+  </section>`;
+
+  const activate=(mode)=>{
+    const create=mode==='create';
+    $('#createAccountPanel').classList.toggle('hidden',!create);
+    $('#signInPanel').classList.toggle('hidden',create);
+    $('#showCreateAccount').classList.toggle('active',create);
+    $('#showSignIn').classList.toggle('active',!create);
+    setTitle(create?'Create Account':'Sign In');
+  };
+  $('#showCreateAccount').onclick=()=>activate('create');
+  $('#showSignIn').onclick=()=>activate('signin');
+
+  $('#createAccountBtn').onclick=async()=>{
+    const fullName=$('#signupName').value.trim(),organization=$('#signupOrg').value.trim(),email=$('#signupEmail').value.trim(),password=$('#signupPassword').value,password2=$('#signupPassword2').value;
+    if(!fullName||!email||!password)return alert('Enter your name, email, and password.');
+    if(password.length<6)return alert('Use a password with at least 6 characters.');
+    if(password!==password2)return alert('The passwords do not match.');
+    const btn=$('#createAccountBtn');btn.disabled=true;$('#signupStatus').textContent='Creating your account…';
+    try{
+      const data=await MayoCloud.signUpWithPassword({email,password,fullName,organization});
+      if(data.session){
+        $('#signupStatus').innerHTML='<b>Account created.</b><br>Signing you in…';
+        await refreshCloudState();MayoCloud.subscribe(()=>refreshCloudState());
+      }else{
+        $('#signupStatus').innerHTML='<b>Almost done — check your email.</b><br>Open the confirmation message from <b>no-reply@auth.planex-bp.com</b>. If you use Outlook or Hotmail, check Junk/Spam too. After confirming, return here and sign in with your email and password.';
+      }
+    }catch(e){showError(e);$('#signupStatus').textContent='Could not create the account. If you already registered, switch to Sign in.';}
+    finally{btn.disabled=false;}
+  };
+
+  $('#passwordSignIn').onclick=async()=>{
+    const email=$('#loginEmail').value.trim(),password=$('#loginPassword').value;if(!email||!password)return alert('Enter email and password.');
+    const btn=$('#passwordSignIn');btn.disabled=true;$('#loginStatus').textContent='Signing in…';
+    try{await MayoCloud.signInWithPassword(email,password);await refreshCloudState();MayoCloud.subscribe(()=>refreshCloudState());}
+    catch(e){showError(e);$('#loginStatus').textContent='Could not sign in. Make sure your email is confirmed and your password is correct.';}
+    finally{btn.disabled=false;}
+  };
+
+  $('#forgotPasswordBtn').onclick=()=>renderForgotPassword();
+
+  $('#sendMagic').onclick=async()=>{
+    const email=$('#loginEmail').value.trim();if(!email)return alert('Enter your email first.');
+    const btn=$('#sendMagic');btn.disabled=true;$('#loginStatus').textContent='Sending…';
+    try{await window.MayoCloud.sendMagicLink(email);$('#loginStatus').innerHTML='<b>Check your email.</b><br>The link comes from <b>no-reply@auth.planex-bp.com</b>. Outlook/Hotmail users: check Junk/Spam too.';}
+    catch(e){showError(e);$('#loginStatus').textContent='Could not send the sign-in link.';}
+    finally{btn.disabled=false;}
+  };
 }
+
+function renderForgotPassword(){
+  document.body.classList.add('auth-screen');setTitle('Reset Password');$('#roleBadge').classList.add('hidden');setSyncBadge('Cloud Beta','cloud');
+  $('#view').innerHTML=`<section class="auth-wrap">
+    <div class="hero"><div class="eyebrow" style="color:#FFD5E6">Mayo 2026 Program Companion</div><h2>Reset your password</h2><p>Enter your registered email address and we’ll send you a secure reset link.</p></div>
+    <div class="card auth-card">
+      <div class="form-group"><label>Email</label><input id="resetEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>
+      <div class="email-notice compact">The reset email will come from <b>no-reply@auth.planex-bp.com</b>. Outlook/Hotmail users should also check Junk/Spam.</div>
+      <button class="btn pink full" id="sendResetBtn">Send Password Reset Link</button>
+      <button class="btn ghost full" id="backToSignInBtn">Back to Sign In</button>
+      <div id="resetStatus" class="muted center auth-status"></div>
+    </div>
+  </section>`;
+  $('#backToSignInBtn').onclick=()=>renderLogin();
+  $('#sendResetBtn').onclick=async()=>{
+    const email=$('#resetEmail').value.trim();if(!email)return alert('Enter your email address.');
+    const btn=$('#sendResetBtn');btn.disabled=true;$('#resetStatus').textContent='Sending…';
+    try{await MayoCloud.requestPasswordReset(email);$('#resetStatus').innerHTML='<b>Check your email.</b><br>If an account exists for this address, a password reset link has been sent. Outlook/Hotmail users: check Junk/Spam too.';}
+    catch(e){showError(e);$('#resetStatus').textContent='Could not send the reset link. Please try again.';}
+    finally{btn.disabled=false;}
+  };
+}
+
+function renderPasswordRecovery(){
+  document.body.classList.add('auth-screen');setTitle('Choose New Password');$('#roleBadge').classList.add('hidden');setSyncBadge('Cloud Beta','cloud');
+  $('#view').innerHTML=`<section class="auth-wrap">
+    <div class="hero"><div class="eyebrow" style="color:#FFD5E6">Mayo 2026 Program Companion</div><h2>Choose a new password</h2><p>Create a new password for your account.</p></div>
+    <div class="card auth-card">
+      <div class="form-group"><label>New password</label><input id="newPassword" type="password" autocomplete="new-password" placeholder="At least 6 characters"></div>
+      <div class="form-group"><label>Confirm new password</label><input id="newPassword2" type="password" autocomplete="new-password" placeholder="Re-enter your password"></div>
+      <button class="btn pink full" id="updatePasswordBtn">Update Password</button>
+      <div id="updatePasswordStatus" class="muted center auth-status"></div>
+    </div>
+  </section>`;
+  $('#updatePasswordBtn').onclick=async()=>{
+    const p1=$('#newPassword').value,p2=$('#newPassword2').value;
+    if(p1.length<6)return alert('Use a password with at least 6 characters.');
+    if(p1!==p2)return alert('The passwords do not match.');
+    const btn=$('#updatePasswordBtn');btn.disabled=true;$('#updatePasswordStatus').textContent='Updating…';
+    try{
+      await MayoCloud.updatePassword(p1);
+      $('#updatePasswordStatus').innerHTML='<b>Password updated successfully.</b><br>Returning to Sign In…';
+      try{history.replaceState({},document.title,window.location.pathname);}catch(_e){}
+      await MayoCloud.signOut();
+      setTimeout(()=>renderLogin(),700);
+    }catch(e){showError(e);$('#updatePasswordStatus').textContent='Could not update the password. Please request a new reset link.';btn.disabled=false;}
+  };
+}
+
 function renderHome(){
   setTitle('Home');const u=currentUser();const now=Date.now();const next=state.schedule.find(e=>!e.startsAt||new Date(e.startsAt).getTime()>=now)||state.schedule[0];const done=state.missions.filter(m=>m.done).length;
   $('#view').innerHTML=`<section class="hero"><div class="eyebrow" style="color:#FFD5E6">Connect • Contribute • Stretch</div><h2>Welcome, ${esc((u.name||'Participant').split(' ')[0])}!</h2><p>People. Learning. Impact. Together.</p></section>
@@ -218,6 +357,7 @@ async function bootstrap(){
     const result=await window.MayoCloud.init();
     backendMode=result.mode;
     if(backendMode==='supabase'){
+      if(window.MayoCloud.lastAuthEvent==='PASSWORD_RECOVERY'){renderPasswordRecovery();return;}
       if(!result.session){renderLogin();return;}
       await refreshCloudState({renderPage:false});window.MayoCloud.subscribe(()=>refreshCloudState());render();
     }else{state=loadLocalState();setSyncBadge('Local Demo','local');render();}
@@ -227,6 +367,6 @@ async function bootstrap(){
 $$('.nav-item').forEach(b=>b.onclick=()=>navTo(b.dataset.route));
 $('#modalClose').onclick=closeModal;$('#modal').onclick=e=>{if(e.target.id==='modal')closeModal()};
 $('#roleBadge').onclick=showAccount;
-window.addEventListener('mayo-auth-changed',async()=>{if(backendMode!=='supabase')return;const s=await MayoCloud.getSession();if(s){await refreshCloudState();MayoCloud.subscribe(()=>refreshCloudState());}else renderLogin();});
+window.addEventListener('mayo-auth-changed',async(e)=>{if(backendMode!=='supabase')return;if(e?.detail?.event==='PASSWORD_RECOVERY'){renderPasswordRecovery();return;}const s=await MayoCloud.getSession();if(s){await refreshCloudState();MayoCloud.subscribe(()=>refreshCloudState());}else renderLogin();});
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));
 bootstrap();
