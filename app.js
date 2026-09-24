@@ -65,6 +65,42 @@ function save(){if(backendMode==='local')localStorage.setItem(storageKey,JSON.st
 function currentUser(){return state.people.find(p=>p.id===state.currentUserId)||{id:state.currentUserId,name:'Participant',initials:'P',org:'',title:'',interests:'',team:'',bio:''}}
 function person(id){return state.people.find(p=>p.id===id)}
 function esc(str=''){return String(str).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function privacyNoticeHtml(){return `<h2 id="modalTitle">Privacy Notice</h2>
+  <p class="muted"><b>Effective:</b> September 24, 2026</p>
+  <p><b>Data Controller.</b> PlanEx operates the Mayo 2026 Program Companion and is responsible for the participant information processed through this app.</p>
+  <h3>Information we collect</h3>
+  <p>We may collect information you provide to use the program, including your name, email address, organization or affiliation, profile information, team assignment, program participation activity, messages, mission and point activity, poll responses, and account/authentication information.</p>
+  <h3>Please do not submit sensitive information</h3>
+  <p>This app is intended for program coordination and participant interaction only. Please do <b>not</b> enter, upload, send, or exchange confidential business information, medical or health information, financial information, government identification numbers, passwords, sensitive personal information, or any other information that you or another person would not want disclosed.</p>
+  <h3>How we use information</h3>
+  <p>Information is used to operate the Mayo 2026 program, manage accounts and participation, provide schedules and announcements, enable participant communication, administer teams, missions, points and polls, maintain security, and support the program.</p>
+  <p>PlanEx does not sell participant personal information or use it for third-party advertising.</p>
+  <h3>Service providers and international processing</h3>
+  <p>The app uses third-party technology providers for hosting, authentication, database, realtime functions and transactional email. Information may therefore be processed or stored in the United States, including information submitted by participants located in Japan or other countries.</p>
+  <h3>Retention and program closure</h3>
+  <p>PlanEx intends to close the Mayo 2026 Program Companion and delete participant-entered information and the active program database <b>within 12 months after the program ends</b>. After closure, the app will not be maintained as an archive of participant content. Limited residual copies may remain temporarily in provider backups, security logs, or records required by law until those systems complete their normal retention cycles.</p>
+  <h3>Security and participant responsibility</h3>
+  <p>PlanEx uses reasonable administrative and technical safeguards, but no online service can guarantee absolute confidentiality or security. Participants are responsible for avoiding submission of confidential, sensitive, or private information. To the extent permitted by applicable law, PlanEx cannot accept responsibility for disclosure or other consequences resulting from a participant voluntarily submitting information that this notice instructs participants not to submit.</p>
+  <h3>Your choices</h3>
+  <p>You may contact PlanEx regarding access, correction, or deletion of your account information. Interim contact: <b>no-reply@auth.planex-bp.com</b>.</p>
+  <p class="muted">This notice may be updated if the program's data practices change.</p>`}
+function termsOfUseHtml(){return `<h2 id="modalTitle">Terms of Use</h2>
+  <p class="muted"><b>Effective:</b> September 24, 2026</p>
+  <p>The Mayo 2026 Program Companion is provided by PlanEx for authorized program participants and program administration.</p>
+  <h3>Appropriate use</h3>
+  <p>Use the app only for legitimate program-related coordination, networking, communication and activities. Do not share your account credentials or use another participant's account.</p>
+  <h3>No confidential or sensitive content</h3>
+  <p>Do not use the app to enter, upload, transmit, request, or exchange confidential information, sensitive personal information, medical or health information, financial information, passwords, regulated information, or any information about yourself or another person that should remain private.</p>
+  <h3>Respect other participants</h3>
+  <p>Do not harass others, impersonate another person, post unlawful or inappropriate content, or disclose another participant's information outside the program without permission.</p>
+  <h3>Security and responsibility</h3>
+  <p>PlanEx will use reasonable safeguards but cannot guarantee that an online service will be error-free, continuously available, or absolutely secure. Participants accept responsibility for the information they choose to submit and agree to avoid information that should not be disclosed. To the extent permitted by applicable law, PlanEx is not responsible for disclosure or consequences arising from a participant's voluntary submission of information prohibited by these Terms.</p>
+  <h3>Program end</h3>
+  <p>The app is temporary. PlanEx intends to shut down the site/app and delete participant-entered information and the active program database within 12 months after the Mayo 2026 program ends, subject to temporary provider backups, security logs, and legal retention requirements.</p>
+  <h3>Account administration</h3>
+  <p>PlanEx may suspend or remove access when reasonably necessary for security, program administration, misuse, or compliance with applicable requirements.</p>`}
+function openPrivacyNotice(){openModal(privacyNoticeHtml())}
+function openTermsOfUse(){openModal(termsOfUseHtml())}
 function totalUnread(){return Object.values(state.unread||{}).reduce((a,b)=>a+(Number(b)||0),0)}
 function updateBadge(){const b=$('#messageBadge');if(!b)return;const n=totalUnread();b.textContent=n;b.classList.toggle('hidden',!n)}
 function navTo(r){route=r;$$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.route===r));render()}
@@ -113,10 +149,13 @@ function renderLogin(){
         <div class="form-group"><label>Confirm password</label><input id="signupPassword2" type="password" placeholder="Re-enter your password" autocomplete="new-password"></div>
         <div class="email-notice">
           <b>After you register, check your email to confirm your account.</b><br>
-          The confirmation email will come from <b>no-reply@auth.planex-bp.com</b>.<br>
-          <span>If you use Outlook or Hotmail, please also check your Junk/Spam folder.</span>
+          The confirmation email will come from <b>no-reply@auth.planex-bp.com</b>. If you do not see it, please check your <b>Junk/Spam</b> folder.
         </div>
+        <div class="retry-notice"><b>Having trouble?</b> Please wait a few minutes before trying again. If you have made several attempts, wait up to one hour before requesting another email.</div>
+        <label class="consent-row"><input id="privacyConsent" type="checkbox"><span>I have read the <button type="button" class="text-link" id="openPrivacySignup">Privacy Notice</button> and understand that my information may be processed and stored in the United States for operation of the Mayo 2026 Program Companion.</span></label>
+        <label class="consent-row"><input id="termsConsent" type="checkbox"><span>I agree to the <button type="button" class="text-link" id="openTermsSignup">Terms of Use</button>, including the requirement not to submit or exchange confidential, sensitive, private, or other information that should not be disclosed.</span></label>
         <button class="btn pink full" id="createAccountBtn">Create Account</button>
+        <div class="policy-links"><button type="button" class="text-link" id="openPrivacyFooter">Privacy Notice</button><span>•</span><button type="button" class="text-link" id="openTermsFooter">Terms of Use</button></div>
         <div id="signupStatus" class="muted center auth-status"></div>
       </div>
 
@@ -127,13 +166,9 @@ function renderLogin(){
         <div class="form-group"><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password"></div>
         <button class="btn pink full" id="passwordSignIn">Sign In</button>
         <button class="btn ghost full" id="forgotPasswordBtn" type="button">Forgot password?</button>
+        <div class="retry-notice compact"><b>Having trouble?</b> If sign-in or password reset does not work after several attempts, wait a few minutes and try again. You may need to wait up to one hour before requesting another email.</div>
+        <div class="policy-links"><button type="button" class="text-link" id="openPrivacySignin">Privacy Notice</button><span>•</span><button type="button" class="text-link" id="openTermsSignin">Terms of Use</button></div>
         <div id="loginStatus" class="muted center auth-status"></div>
-        <details class="magic-link-details">
-          <summary>Prefer a one-time email link?</summary>
-          <p class="muted">We can send a secure Magic Link to the email above.</p>
-          <div class="email-notice compact">The email comes from <b>no-reply@auth.planex-bp.com</b>. Outlook/Hotmail users should check Junk/Spam if it is not in the Inbox.</div>
-          <button class="btn ghost full" id="sendMagic">Send Magic Link</button>
-        </details>
       </div>
     </div>
   </section>`;
@@ -148,12 +183,16 @@ function renderLogin(){
   };
   $('#showCreateAccount').onclick=()=>activate('create');
   $('#showSignIn').onclick=()=>activate('signin');
+  $('#openPrivacySignup').onclick=openPrivacyNotice;$('#openTermsSignup').onclick=openTermsOfUse;
+  $('#openPrivacyFooter').onclick=openPrivacyNotice;$('#openTermsFooter').onclick=openTermsOfUse;
+  $('#openPrivacySignin').onclick=openPrivacyNotice;$('#openTermsSignin').onclick=openTermsOfUse;
 
   $('#createAccountBtn').onclick=async()=>{
     const fullName=$('#signupName').value.trim(),organization=$('#signupOrg').value.trim(),email=$('#signupEmail').value.trim(),password=$('#signupPassword').value,password2=$('#signupPassword2').value;
     if(!fullName||!email||!password)return alert('Enter your name, email, and password.');
     if(password.length<6)return alert('Use a password with at least 6 characters.');
     if(password!==password2)return alert('The passwords do not match.');
+    if(!$('#privacyConsent').checked||!$('#termsConsent').checked)return alert('Please review and accept the Privacy Notice and Terms of Use before creating your account.');
     const btn=$('#createAccountBtn');btn.disabled=true;$('#signupStatus').textContent='Creating your account…';
     try{
       const data=await MayoCloud.signUpWithPassword({email,password,fullName,organization});
@@ -161,9 +200,9 @@ function renderLogin(){
         $('#signupStatus').innerHTML='<b>Account created.</b><br>Signing you in…';
         await refreshCloudState();MayoCloud.subscribe(()=>refreshCloudState());
       }else{
-        $('#signupStatus').innerHTML='<b>Almost done — check your email.</b><br>Open the confirmation message from <b>no-reply@auth.planex-bp.com</b>. If you use Outlook or Hotmail, check Junk/Spam too. After confirming, return here and sign in with your email and password.';
+        $('#signupStatus').innerHTML='<b>Almost done — check your email.</b><br>Open the confirmation message from <b>no-reply@auth.planex-bp.com</b>. If you do not see the message, check your Junk/Spam folder. After confirming, return here and sign in with your email and password.';
       }
-    }catch(e){showError(e);$('#signupStatus').textContent='Could not create the account. If you already registered, switch to Sign in.';}
+    }catch(e){showError(e);$('#signupStatus').textContent='Could not create the account. If you already registered, switch to Sign in. Otherwise, wait a few minutes and try again; after several attempts, you may need to wait up to one hour.';}
     finally{btn.disabled=false;}
   };
 
@@ -177,13 +216,6 @@ function renderLogin(){
 
   $('#forgotPasswordBtn').onclick=()=>renderForgotPassword();
 
-  $('#sendMagic').onclick=async()=>{
-    const email=$('#loginEmail').value.trim();if(!email)return alert('Enter your email first.');
-    const btn=$('#sendMagic');btn.disabled=true;$('#loginStatus').textContent='Sending…';
-    try{await window.MayoCloud.sendMagicLink(email);$('#loginStatus').innerHTML='<b>Check your email.</b><br>The link comes from <b>no-reply@auth.planex-bp.com</b>. Outlook/Hotmail users: check Junk/Spam too.';}
-    catch(e){showError(e);$('#loginStatus').textContent='Could not send the sign-in link.';}
-    finally{btn.disabled=false;}
-  };
 }
 
 function renderForgotPassword(){
@@ -192,7 +224,7 @@ function renderForgotPassword(){
     <div class="hero"><div class="eyebrow" style="color:#FFD5E6">Mayo 2026 Program Companion</div><h2>Reset your password</h2><p>Enter your registered email address and we’ll send you a secure reset link.</p></div>
     <div class="card auth-card">
       <div class="form-group"><label>Email</label><input id="resetEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>
-      <div class="email-notice compact">The reset email will come from <b>no-reply@auth.planex-bp.com</b>. Outlook/Hotmail users should also check Junk/Spam.</div>
+      <div class="email-notice compact">The reset email will come from <b>no-reply@auth.planex-bp.com</b>. If you do not see it, please check your <b>Junk/Spam</b> folder.</div><div class="retry-notice compact"><b>Having trouble?</b> Please wait a few minutes before trying again. If you have made several attempts, wait up to one hour before requesting another reset email.</div>
       <button class="btn pink full" id="sendResetBtn">Send Password Reset Link</button>
       <button class="btn ghost full" id="backToSignInBtn">Back to Sign In</button>
       <div id="resetStatus" class="muted center auth-status"></div>
@@ -202,8 +234,8 @@ function renderForgotPassword(){
   $('#sendResetBtn').onclick=async()=>{
     const email=$('#resetEmail').value.trim();if(!email)return alert('Enter your email address.');
     const btn=$('#sendResetBtn');btn.disabled=true;$('#resetStatus').textContent='Sending…';
-    try{await MayoCloud.requestPasswordReset(email);$('#resetStatus').innerHTML='<b>Check your email.</b><br>If an account exists for this address, a password reset link has been sent. Outlook/Hotmail users: check Junk/Spam too.';}
-    catch(e){showError(e);$('#resetStatus').textContent='Could not send the reset link. Please try again.';}
+    try{await MayoCloud.requestPasswordReset(email);$('#resetStatus').innerHTML='<b>Check your email.</b><br>If an account exists for this address, a password reset link has been sent. If you do not see it, check your Junk/Spam folder.';}
+    catch(e){showError(e);$('#resetStatus').textContent='Could not send the reset link. Please wait a few minutes and try again. After several attempts, you may need to wait up to one hour.';}
     finally{btn.disabled=false;}
   };
 }
@@ -332,8 +364,8 @@ async function sendChat(type,id){const input=$('#chatInput');const text=input.va
 
 function renderMore(){
   setTitle('Tools & Admin');const u=currentUser();const dataHtml=backendMode==='supabase'?`<div class="card"><div class="section-head"><h3>Cloud Beta</h3><span class="pill green">Connected</span></div><p class="muted">Signed in as ${esc(MayoCloud.session?.user?.email||'participant')}. Shared data and realtime updates are enabled.</p><button class="btn ghost full" id="signOutBtn">Sign Out</button></div>`:`<div class="card"><div class="section-head"><h3>Local Demo</h3><span class="pill orange">This device only</span></div><p class="muted">Points, messages, and admin changes are saved only in this browser.</p><button class="btn pink full" id="connectBackend">Connect Beta Backend</button><div class="spacer"></div><button class="btn ghost full" id="resetPrototype">Reset Local Demo Data</button></div>`;
-  $('#view').innerHTML=`<div class="section-head"><h3>Program Tools</h3><span class="pill">${backendMode==='supabase'?'Beta':'Prototype'}</span></div><div class="grid two">${toolCard('grouping','👥','Grouping','Balanced random groups')}${toolCard('timer','⏱','Presentation Timer','Presets + sound/vibration alerts')}${toolCard('random','🎲','Random Pick','Pick a participant')}${toolCard('poll','▥','Quick Poll','Live shared voting')}</div><section class="section"><div class="section-head"><h3>My Profile</h3></div><div class="card"><h3>${esc(u.name)}</h3><p class="muted">${esc(u.org)}${u.title?' • '+esc(u.title):''}</p><button class="btn ghost full" id="editProfile">Edit Profile</button></div></section><section class="section"><div class="section-head"><h3>Data & Sync</h3></div>${dataHtml}</section><section class="section"><div class="section-head"><h3>Admin</h3><span class="pill orange">${state.role==='admin'?'Enabled':'Participant'}</span></div><div class="card"><p class="muted">Admin users can publish announcements, missions, schedule items, and quick polls.</p><button class="btn full" id="openAdmin">Open Admin Panel</button></div></section>`;
-  $$('[data-tool]').forEach(el=>el.onclick=()=>openTool(el.dataset.tool));$('#openAdmin').onclick=openAdmin;$('#editProfile').onclick=editMyProfile;if($('#connectBackend'))$('#connectBackend').onclick=openBackendSetup;if($('#resetPrototype'))$('#resetPrototype').onclick=()=>{if(confirm('Reset all local demo data?')){localStorage.removeItem(storageKey);state=structuredClone(seed);render();}};if($('#signOutBtn'))$('#signOutBtn').onclick=async()=>{await MayoCloud.signOut();renderLogin();};
+  $('#view').innerHTML=`<div class="section-head"><h3>Program Tools</h3><span class="pill">${backendMode==='supabase'?'Beta':'Prototype'}</span></div><div class="grid two">${toolCard('grouping','👥','Grouping','Balanced random groups')}${toolCard('timer','⏱','Presentation Timer','Presets + sound/vibration alerts')}${toolCard('random','🎲','Random Pick','Pick a participant')}${toolCard('poll','▥','Quick Poll','Live shared voting')}</div><section class="section"><div class="section-head"><h3>My Profile</h3></div><div class="card"><h3>${esc(u.name)}</h3><p class="muted">${esc(u.org)}${u.title?' • '+esc(u.title):''}</p><button class="btn ghost full" id="editProfile">Edit Profile</button></div></section><section class="section"><div class="section-head"><h3>Data & Sync</h3></div>${dataHtml}</section><section class="section"><div class="section-head"><h3>Privacy & Use</h3></div><div class="card"><p class="muted">Review how participant information is handled and the rules for using this temporary program app.</p><button class="btn ghost full" id="morePrivacy">Privacy Notice</button><div class="spacer"></div><button class="btn ghost full" id="moreTerms">Terms of Use</button></div></section><section class="section"><div class="section-head"><h3>Admin</h3><span class="pill orange">${state.role==='admin'?'Enabled':'Participant'}</span></div><div class="card"><p class="muted">Admin users can publish announcements, missions, schedule items, and quick polls.</p><button class="btn full" id="openAdmin">Open Admin Panel</button></div></section>`;
+  $$('[data-tool]').forEach(el=>el.onclick=()=>openTool(el.dataset.tool));$('#openAdmin').onclick=openAdmin;$('#editProfile').onclick=editMyProfile;$('#morePrivacy').onclick=openPrivacyNotice;$('#moreTerms').onclick=openTermsOfUse;if($('#connectBackend'))$('#connectBackend').onclick=openBackendSetup;if($('#resetPrototype'))$('#resetPrototype').onclick=()=>{if(confirm('Reset all local demo data?')){localStorage.removeItem(storageKey);state=structuredClone(seed);render();}};if($('#signOutBtn'))$('#signOutBtn').onclick=async()=>{await MayoCloud.signOut();renderLogin();};
 }
 function editMyProfile(){
   const u=currentUser();

@@ -80,3 +80,14 @@ Supabase Authentication > URL Configuration のRedirect URLsに `https://mayo202
 
 ## v4確認項目
 パスワード再設定メールのリンクを開いた後、Choose New Password画面が自動でHomeへ遷移せず固定されることを確認してください。新しいパスワードを保存するとSign In画面へ戻ります。
+
+
+## v5 追加確認
+公開後、Create account画面で以下を確認してください。
+- Magic Linkの選択肢が表示されない
+- 確認メールについてJunk/Spam確認の一般的な注意が表示される
+- 連続試行時は数分〜最大1時間待つ旨が表示される
+- Privacy Notice / Terms of Useへのリンクと2つの同意チェックが表示される
+- More画面からPrivacy Notice / Terms of Useを再確認できる
+
+※ Privacy/Termsの文面は実務向けドラフトです。必要に応じて正式公開前に法務レビューを行ってください。

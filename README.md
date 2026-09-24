@@ -1,4 +1,5 @@
-# Mayo 2026 Program Companion — GitHub Pages Beta
+# Mayo 2026 Program Companion — GitHub Pages Beta v5
+
 
 Static frontend for the Mayo 2026 Program Companion.
 
@@ -34,3 +35,13 @@ Participant self-registration is enabled with full name, optional organization, 
 - Keeps the Choose New Password screen active after Supabase establishes the recovery session.
 - Uses sessionStorage to remember recovery mode even if Supabase cleans the recovery URL.
 - Clears recovery mode only after a successful password update or explicit cancel.
+
+
+## v5 updates
+- Participant Magic Link option removed from the UI; standard flow is email confirmation + password.
+- General Junk/Spam guidance added to registration and password-reset screens.
+- Retry guidance added for rate limits / repeated requests.
+- Privacy Notice and Terms of Use added to registration and the in-app More screen.
+- Registration now requires explicit acknowledgement of privacy/cross-border processing and agreement not to submit confidential, sensitive, or private information.
+- Data Controller identified as PlanEx.
+- Program data retention states active participant-entered data/database will be deleted and the site/app closed within 12 months after program end, with a limited provider-backup/legal-retention caveat.
