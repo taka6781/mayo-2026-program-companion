@@ -61,7 +61,7 @@
     const {data,error} = await client.auth.getSession();
     if (error) throw error;
     session = data.session;
-    client.auth.onAuthStateChange((event,newSession)=>{lastAuthEvent=event;session=newSession; window.dispatchEvent(new CustomEvent('mayo-auth-changed',{detail:{event,session:newSession}}));});
+    client.auth.onAuthStateChange((event,newSession)=>{lastAuthEvent=event;session=newSession; setTimeout(()=>window.dispatchEvent(new CustomEvent('mayo-auth-changed',{detail:{event,session:newSession}})),0);});
     return {mode:'supabase', configured:true, session};
   }
 

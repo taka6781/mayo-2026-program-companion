@@ -42,6 +42,8 @@ let audioCtx=null;
 let timer={total:180,remaining:180,running:false};
 let backendMode='local';
 let cloudRefreshing=false;
+let cloudRefreshPromise=null;
+let signInFlowActive=false;
 
 const recoveryModeKey='mayo2026PasswordRecoveryMode';
 function urlHasRecoveryMarker(){
@@ -110,12 +112,47 @@ function closeModal(){$('#modal').classList.add('hidden');$('#modalContent').inn
 function setSyncBadge(text,kind='local'){const el=$('#syncBadge');if(!el)return;el.textContent=text;el.className=`sync-badge ${kind}`}
 function showError(err){console.error(err);alert(err?.message||String(err))}
 
-async function refreshCloudState({renderPage=true}={}){
-  if(backendMode!=='supabase'||cloudRefreshing)return;
+async function refreshCloudState({renderPage=true,throwOnError=false}={}){
+  if(backendMode!=='supabase')return false;
+  if(cloudRefreshPromise){
+    try{await cloudRefreshPromise;if(renderPage)render();return true;}
+    catch(e){if(throwOnError)throw e;return false;}
+  }
   cloudRefreshing=true;setSyncBadge('Syncing…','syncing');
-  try{state=await window.MayoCloud.loadState(seed);setSyncBadge('Cloud Beta','cloud');if(renderPage)render();}
-  catch(e){setSyncBadge('Sync error','error');console.error(e);}
-  finally{cloudRefreshing=false;}
+  cloudRefreshPromise=(async()=>{
+    const nextState=await window.MayoCloud.loadState(seed);
+    state=nextState;
+    setSyncBadge('Cloud Beta','cloud');
+    return true;
+  })();
+  try{
+    await cloudRefreshPromise;
+    if(renderPage)render();
+    return true;
+  }catch(e){
+    setSyncBadge('Sync error','error');
+    console.error(e);
+    if(throwOnError)throw e;
+    return false;
+  }finally{
+    cloudRefreshPromise=null;
+    cloudRefreshing=false;
+  }
+}
+
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function loadSignedInStateWithRetry(){
+  let lastError=null;
+  for(const waitMs of [0,150,500,1000]){
+    if(waitMs)await delay(waitMs);
+    try{
+      await MayoCloud.getSession();
+      const ok=await refreshCloudState({renderPage:false,throwOnError:true});
+      if(ok)return true;
+    }catch(e){lastError=e;console.warn('Post-sign-in state load retry',e);}
+  }
+  if(lastError)throw lastError;
+  return false;
 }
 
 function render(){
@@ -208,10 +245,25 @@ function renderLogin(){
 
   $('#passwordSignIn').onclick=async()=>{
     const email=$('#loginEmail').value.trim(),password=$('#loginPassword').value;if(!email||!password)return alert('Enter email and password.');
-    const btn=$('#passwordSignIn');btn.disabled=true;$('#loginStatus').textContent='Signing in…';
-    try{await MayoCloud.signInWithPassword(email,password);await refreshCloudState();MayoCloud.subscribe(()=>refreshCloudState());}
-    catch(e){showError(e);$('#loginStatus').textContent='Could not sign in. Make sure your email is confirmed and your password is correct.';}
-    finally{btn.disabled=false;}
+    const btn=$('#passwordSignIn');btn.disabled=true;signInFlowActive=true;$('#loginStatus').textContent='Signing in…';
+    try{
+      await MayoCloud.signInWithPassword(email,password);
+      $('#loginStatus').textContent='Loading your account…';
+      await loadSignedInStateWithRetry();
+      MayoCloud.subscribe(()=>refreshCloudState());
+      route='home';
+      render();
+    }
+    catch(e){
+      console.error(e);
+      const hasSession=await MayoCloud.getSession().catch(()=>null);
+      if(hasSession){
+        $('#loginStatus').innerHTML='<b>You are signed in, but your account data did not finish loading.</b><br>Please try again in a moment or refresh this page.';
+      }else{
+        $('#loginStatus').textContent='Could not sign in. Make sure your email is confirmed and your password is correct.';
+      }
+    }
+    finally{signInFlowActive=false;btn.disabled=false;}
   };
 
   $('#forgotPasswordBtn').onclick=()=>renderForgotPassword();
@@ -451,9 +503,14 @@ window.addEventListener('mayo-auth-changed',async(e)=>{
   if(backendMode!=='supabase')return;
   if(e?.detail?.event==='PASSWORD_RECOVERY') enterRecoveryMode();
   if(recoveryModeActive()){renderPasswordRecovery();return;}
-  const s=await MayoCloud.getSession();
-  if(s){await refreshCloudState();MayoCloud.subscribe(()=>refreshCloudState());}
-  else renderLogin();
+  if(signInFlowActive && e?.detail?.event==='SIGNED_IN')return;
+  try{
+    const s=e?.detail?.session || await MayoCloud.getSession();
+    if(s){
+      const ok=await refreshCloudState({renderPage:false});
+      if(ok){MayoCloud.subscribe(()=>refreshCloudState());render();}
+    }else renderLogin();
+  }catch(err){console.error('Auth state refresh failed',err);}
 });
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));
 bootstrap();
