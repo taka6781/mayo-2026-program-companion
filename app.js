@@ -361,8 +361,37 @@ function renderScheduleList(tab){
       else {list=[];heading='Today';}
     }
   }
-  body.innerHTML=`<div class="section-head"><h3>${esc(heading)}</h3><span class="pill">${list.length} events</span></div><div class="list">${list.map(e=>`<div class="list-row clickable" data-event="${e.id}"><div class="time">${esc((e.time||'').split(' – ')[0])}</div><div class="main"><h4>${esc(e.title)} ${bookmarks.has(e.id)?'★':''}</h4><p>${esc(e.location)}</p></div><div>›</div></div>`).join('')||'<div class="empty">No events in this view.</div>'}</div>`;
-  $$('[data-event]').forEach(el=>el.onclick=()=>showEvent(el.dataset.event));
+  body.innerHTML=`<div class="section-head"><h3>${esc(heading)}</h3><span class="pill">${list.length} events</span></div><div class="detail-list">${list.map(e=>scheduleDetailCard(e,bookmarks.has(e.id))).join('')||'<div class="empty">No events in this view.</div>'}</div>`;
+  $$('[data-schedule-toggle]').forEach(btn=>btn.onclick=async()=>{
+    const id=btn.dataset.scheduleToggle;
+    const saved=(state.bookmarkedEventIds||[]).includes(id);
+    btn.disabled=true;const previous=btn.textContent;btn.textContent='Saving…';
+    try{
+      if(backendMode==='supabase'){await MayoCloud.toggleScheduleBookmark(id,saved);await refreshCloudState({renderPage:false});}
+      else{state.bookmarkedEventIds=state.bookmarkedEventIds||[];state.bookmarkedEventIds=saved?state.bookmarkedEventIds.filter(x=>x!==id):[...state.bookmarkedEventIds,id];save();}
+      renderScheduleList(tab);
+    }catch(err){showError(err);btn.disabled=false;btn.textContent=previous;}
+  });
+  $$('[data-calendar-event]').forEach(btn=>btn.onclick=()=>{const e=state.schedule.find(x=>x.id===btn.dataset.calendarEvent);if(e)downloadCalendarEvent(e);});
+  $$('[data-map-event]').forEach(btn=>btn.onclick=()=>{const e=state.schedule.find(x=>x.id===btn.dataset.mapEvent);if(e?.locationUrl)window.open(e.locationUrl,'_blank');});
+  $$('[data-attachment-event]').forEach(btn=>btn.onclick=()=>{const e=state.schedule.find(x=>x.id===btn.dataset.attachmentEvent);if(e?.attachmentUrl)window.open(e.attachmentUrl,'_blank');});
+}
+function scheduleDetailCard(e,saved){
+  const mapButton=e.locationUrl?`<button class="btn ghost compact" data-map-event="${e.id}">Open Map</button>`:'';
+  const attachment=e.attachmentUrl?`<button class="btn ghost compact" data-attachment-event="${e.id}">Open File</button>`:'';
+  return `<article class="card detail-card schedule-detail-card">
+    <div class="detail-main">
+      <div class="detail-meta"><span class="pill">${esc(e.date||'Program')}</span><span class="time">${esc(e.time||'TBD')}</span></div>
+      <h3>${esc(e.title)}</h3>
+      ${e.location?`<p class="detail-location">📍 ${esc(e.location)}</p>`:''}
+      ${e.details?`<p class="detail-description">${esc(e.details)}</p>`:''}
+      ${(mapButton||attachment)?`<div class="inline-actions">${mapButton}${attachment}</div>`:''}
+    </div>
+    <div class="detail-actions">
+      <button class="btn ghost" data-schedule-toggle="${e.id}">${saved?'★ Remove from My Schedule':'☆ Add to My Schedule'}</button>
+      <button class="btn" data-calendar-event="${e.id}" ${e.startsAt?'':'disabled'}>Add to My Calendar</button>
+    </div>
+  </article>`;
 }
 function icsEscape(v=''){return String(v).replace(/\\/g,'\\\\').replace(/\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;')}
 function icsDate(iso){return new Date(iso).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z')}
@@ -382,11 +411,34 @@ function showEvent(id){
 function renderChallenge(){setTitle('Challenge');$('#view').innerHTML=`<div class="tabs"><button class="tab active" data-ctab="missions">Missions</button><button class="tab" data-ctab="points">My Points</button><button class="tab" data-ctab="leaderboard">Leaderboard</button></div><div id="challengeBody"></div>`;$$('[data-ctab]').forEach(b=>b.onclick=()=>{$$('[data-ctab]').forEach(x=>x.classList.toggle('active',x===b));renderChallengeTab(b.dataset.ctab)});renderChallengeTab('missions');}
 function renderChallengeTab(tab){
   const body=$('#challengeBody');const u=currentUser();
-  if(tab==='missions')body.innerHTML=`<div class="section-head"><h3>Today’s Missions</h3><span class="pill pink">${state.missions.filter(m=>m.done).length}/${state.missions.length}</span></div><div class="list">${state.missions.map(m=>missionCard(m)).join('')||'<div class="empty">No missions published yet.</div>'}</div>`;
+  if(tab==='missions'){
+    body.innerHTML=`<div class="section-head"><h3>Today’s Missions</h3><span class="pill pink">${state.missions.filter(m=>m.done).length}/${state.missions.length}</span></div><div class="detail-list">${state.missions.map(m=>missionDetailCard(m)).join('')||'<div class="empty">No missions published yet.</div>'}</div>`;
+    $$('[data-complete-mission]').forEach(btn=>btn.onclick=async()=>{
+      const id=btn.dataset.completeMission;const m=state.missions.find(x=>x.id===id);if(!m||m.done||m.status==='pending')return;
+      btn.disabled=true;const previous=btn.textContent;btn.textContent='Saving…';
+      try{
+        if(backendMode==='supabase'){await MayoCloud.completeMission(id);await refreshCloudState({renderPage:false});renderChallengeTab('missions');}
+        else{m.done=!m.done;state.points[state.currentUserId]=(state.points[state.currentUserId]||0)+(m.done?m.points:-m.points);save();renderChallengeTab('missions');}
+      }catch(e){showError(e);btn.disabled=false;btn.textContent=previous;}
+    });
+  }
   if(tab==='points')body.innerHTML=`<div class="hero center"><div class="eyebrow" style="color:#FFD5E6">My Score</div><h2>${state.points[u.id]||0} pts</h2><p>Keep connecting, contributing, and stretching.</p></div><section class="section"><div class="card"><h3>Recent Kudos</h3>${(state.kudos||[]).filter(k=>k.to===u.id).slice(0,8).map(k=>`<p>💗 <b>${esc(person(k.from)?.name||'Someone')}</b>: ${esc(k.text)}</p>`).join('')||'<p class="muted">No kudos yet.</p>'}</div></section>`;
   if(tab==='leaderboard')body.innerHTML=leaderboardHtml();
-  $$('[data-mission]').forEach(el=>el.onclick=()=>showMission(el.dataset.mission));
   $$('[data-ltab]').forEach(b=>b.onclick=()=>{$$('[data-ltab]').forEach(x=>x.classList.toggle('active',x===b));$('#leaderboardRows').innerHTML=b.dataset.ltab==='team'?teamLeaderboardRows():individualLeaderboardRows();});
+}
+function missionDetailCard(m){
+  const isPending=m.status==='pending';
+  const label=m.done?'Completed':isPending?'Pending approval':backendMode==='local'?'Complete / Undo':'Complete Mission';
+  const disabled=backendMode==='supabase'&&(m.done||isPending);
+  return `<article class="card detail-card mission-detail-card ${m.done?'completed':''}">
+    <div class="detail-main">
+      <div class="detail-title-row"><div class="icon-box">${m.icon||'⭐'}</div><div><h3>${esc(m.title)}</h3><div class="inline-actions"><span class="pill ${m.category==='Stretch'?'orange':m.category==='Contribute'?'green':'pink'}">${esc(m.category)}</span><span class="pill green">+${m.points} pts</span>${isPending?'<span class="pill orange">Pending</span>':''}</div></div></div>
+      <p class="detail-description">${esc(m.description||'Complete this mission during the program.')}${m.requiresApproval?' This mission requires admin approval.':''}</p>
+    </div>
+    <div class="detail-actions">
+      <button class="btn ${m.done?'ghost':'pink'}" data-complete-mission="${m.id}" ${disabled?'disabled':''}>${label}</button>
+    </div>
+  </article>`;
 }
 function individualLeaderboardRows(){const rows=state.people.map(p=>({p,pts:state.points[p.id]||0})).sort((a,b)=>b.pts-a.pts);return `<table class="score-table">${rows.map((r,i)=>`<tr class="${i===0?'winner':''}"><td>${i+1}. ${esc(r.p.name)}</td><td>${r.pts} pts</td></tr>`).join('')}</table>`}
 function teamLeaderboardRows(){let rows=state.teamLeaderboard||[];if(!rows.length){const map={};state.people.forEach(p=>{if(p.team)map[p.team]=(map[p.team]||0)+(state.points[p.id]||0)});rows=Object.entries(map).map(([name,points])=>({name,points})).sort((a,b)=>b.points-a.points)}return `<table class="score-table">${rows.map((r,i)=>`<tr class="${i===0?'winner':''}"><td>${i+1}. ${esc(r.name)}</td><td>${r.points} pts</td></tr>`).join('')||'<tr><td>No teams yet.</td><td></td></tr>'}</table>`}
