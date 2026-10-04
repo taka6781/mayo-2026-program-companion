@@ -103,3 +103,45 @@ button{cursor:pointer}
   .planex-mark{width:82px}
   .brand-footer{align-items:flex-start;text-align:left}
 }
+
+
+/* v6.7 compact top branding + schedule buttons matched to Complete Mission */
+.topbar-jstarx-logo{
+  width:44px!important;
+  padding:2px 4px!important;
+  border-radius:6px!important;
+}
+.topbar-program{
+  gap:7px!important;
+}
+.topbar-program-name{
+  color:var(--pink)!important;
+  font-size:10.5px!important;
+  line-height:1.22!important;
+  font-weight:800!important;
+}
+.schedule-actions .btn,
+.schedule-actions .btn.pink,
+.schedule-actions .btn.ghost{
+  background:var(--pink)!important;
+  border:0!important;
+  color:#fff!important;
+  font-weight:800!important;
+  min-height:34px!important;
+  padding:7px 10px!important;
+  font-size:11px!important;
+  border-radius:12px!important;
+  box-shadow:none!important;
+}
+.schedule-actions .btn:hover{
+  background:#E94B8C!important;
+}
+.schedule-actions .btn:disabled{
+  opacity:.48!important;
+  background:var(--pink)!important;
+  color:#fff!important;
+}
+@media(max-width:620px){
+  .topbar-jstarx-logo{width:38px!important}
+  .topbar-program-name{font-size:9.5px!important;max-width:250px!important}
+}

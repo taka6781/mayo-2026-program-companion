@@ -347,7 +347,7 @@ function renderPasswordRecovery(){
 
 function renderHome(){
   setTitle('Home');const u=currentUser();const now=Date.now();const next=state.schedule.find(e=>!e.startsAt||new Date(e.startsAt).getTime()>=now)||state.schedule[0];const done=state.missions.filter(m=>m.done).length;
-  $('#view').innerHTML=`<section class="hero"><div class="hero-brand"><img src="jstarx-logo.png" alt="J-StarX" class="hero-program-logo"><div class="hero-program-name">J-StarX US Healthcare Breakthrough Program - Foundational Course</div></div><h2>Welcome, ${esc((u.name||'Participant').split(' ')[0])}!</h2><p class="hero-message">Stay coachable, give first, and turn connections into relationships that go somewhere.<br><span>Be the person people want to build with—not just swap business cards with.</span></p></section>
+  $('#view').innerHTML=`<section class="hero"><h2>Welcome, ${esc((u.name||'Participant').split(' ')[0])}!</h2><p class="hero-message">Stay coachable, give first, and turn connections into relationships that go somewhere.<br><span>Be the person people want to build with—not just swap business cards with.</span></p></section>
     <section class="section"><div class="section-head"><h3>Up Next</h3><span class="pill">Program</span></div>${next?`<div class="card clickable" data-event="${next.id}"><div class="time">${esc(next.time)}</div><h3 style="margin:6px 0">${esc(next.title)}</h3><p class="muted">📍 ${esc(next.location)}</p><button class="btn ghost" style="margin-top:8px">View details</button></div>`:'<div class="card empty">No schedule has been published yet.</div>'}</section>
     <section class="section"><div class="section-head"><h3>Today’s Mission</h3><span class="pill pink">${done}/${state.missions.length} complete</span></div>${state.missions.length?missionCard(state.missions.find(m=>!m.done)||state.missions[0]):'<div class="card empty">No missions have been published yet.</div>'}</section>
     <section class="section"><div class="grid two"><div class="card"><div class="kpi"><div class="kpi-icon">★</div><div><strong>${state.points[u.id]||0}</strong><small>My points</small></div></div></div><div class="card"><div class="kpi"><div class="kpi-icon">✉</div><div><strong>${totalUnread()}</strong><small>Unread messages</small></div></div></div></div></section>
@@ -456,7 +456,7 @@ function renderScheduleList(tab){
 }
 function scheduleDetailCard(e,saved){
   const mapUrl=eventMapUrl(e);
-  const attachment=e.attachmentUrl?`<button class="btn ghost compact" data-attachment-event="${e.id}">Open File</button>`:'';
+  const attachment=e.attachmentUrl?`<button class="btn pink compact" data-attachment-event="${e.id}">Open File</button>`:'';
   return `<article class="card detail-card schedule-detail-card">
     <div class="detail-main">
       <div class="detail-meta"><span class="pill">${esc(e.date||'Program')}</span><span class="time">${esc(e.time||'TBD')}</span></div>
@@ -465,10 +465,10 @@ function scheduleDetailCard(e,saved){
       ${scheduleDescriptionHtml(e)}
     </div>
     <div class="detail-actions schedule-actions">
-      <button class="btn ghost compact" data-map-event="${e.id}" ${mapUrl?'':'disabled'}>Open Map</button>
+      <button class="btn pink compact" data-map-event="${e.id}" ${mapUrl?'':'disabled'}>Open Map</button>
       ${attachment}
-      <button class="btn ghost compact" data-schedule-toggle="${e.id}">${saved?'★ Remove from My Schedule':'☆ Add to My Schedule'}</button>
-      <button class="btn compact" data-calendar-event="${e.id}" ${e.startsAt?'':'disabled'}>Add to My Calendar</button>
+      <button class="btn pink compact" data-schedule-toggle="${e.id}">${saved?'★ Remove from My Schedule':'☆ Add to My Schedule'}</button>
+      <button class="btn pink compact" data-calendar-event="${e.id}" ${e.startsAt?'':'disabled'}>Add to My Calendar</button>
     </div>
   </article>`;
 }
