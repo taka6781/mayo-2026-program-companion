@@ -456,7 +456,7 @@ function renderScheduleList(tab){
 }
 function scheduleDetailCard(e,saved){
   const mapUrl=eventMapUrl(e);
-  const attachment=e.attachmentUrl?`<button class="btn pink compact" data-attachment-event="${e.id}">Open File</button>`:'';
+  const attachment=e.attachmentUrl?`<button class="btn pink" data-attachment-event="${e.id}">Open File</button>`:'';
   return `<article class="card detail-card schedule-detail-card">
     <div class="detail-main">
       <div class="detail-meta"><span class="pill">${esc(e.date||'Program')}</span><span class="time">${esc(e.time||'TBD')}</span></div>
@@ -465,10 +465,10 @@ function scheduleDetailCard(e,saved){
       ${scheduleDescriptionHtml(e)}
     </div>
     <div class="detail-actions schedule-actions">
-      <button class="btn pink compact" data-map-event="${e.id}" ${mapUrl?'':'disabled'}>Open Map</button>
+      <button class="btn pink" data-map-event="${e.id}" ${mapUrl?'':'disabled'}>Open Map</button>
       ${attachment}
-      <button class="btn pink compact" data-schedule-toggle="${e.id}">${saved?'★ Remove from My Schedule':'☆ Add to My Schedule'}</button>
-      <button class="btn pink compact" data-calendar-event="${e.id}" ${e.startsAt?'':'disabled'}>Add to My Calendar</button>
+      <button class="btn pink" data-schedule-toggle="${e.id}">${saved?'★ Remove from My Schedule':'☆ Add to My Schedule'}</button>
+      <button class="btn pink" data-calendar-event="${e.id}" ${e.startsAt?'':'disabled'}>Add to My Calendar</button>
     </div>
   </article>`;
 }
