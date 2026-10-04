@@ -422,20 +422,21 @@
 
   async function adminUserRequest(action,payload={}) {
     if (!client || !session?.access_token) throw new Error('You must be signed in.');
-    const c=cfg();
-    const res=await fetch(`${String(c.supabaseUrl||'').replace(/\/$/,'')}/functions/v1/admin-users`,{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'Authorization':`Bearer ${session.access_token}`,
-        'apikey':c.supabasePublishableKey
-      },
-      body:JSON.stringify({action,...payload,appOrigin:window.location.origin})
+    const {data,error}=await client.functions.invoke('admin-users',{
+      body:{action,...payload,appOrigin:window.location.origin}
     });
-    let data={};
-    try{data=await res.json();}catch(_e){}
-    if(!res.ok)throw new Error(data?.error||data?.message||`User management request failed (${res.status}).`);
-    return data;
+    if(error){
+      let detail='';
+      try{
+        if(error.context && typeof error.context.json==='function'){
+          const body=await error.context.json();
+          detail=body?.error||body?.message||'';
+        }
+      }catch(_e){}
+      throw new Error(detail||error.message||'Could not reach the user-management function.');
+    }
+    if(data?.error)throw new Error(data.error);
+    return data||{};
   }
 
   function subscribe(onChange) {
