@@ -348,6 +348,44 @@ function renderPasswordRecovery(){
   };
 }
 
+
+function inviteSetupRequested(){
+  try{return new URLSearchParams(window.location.search).get('setup')==='invite';}catch(_e){return false;}
+}
+function clearInviteSetupFlag(){
+  try{history.replaceState({},document.title,window.location.pathname);}catch(_e){}
+}
+function renderInviteSetup(){
+  document.body.classList.add('auth-screen');setTitle('Finish Account Setup');$('#roleBadge').classList.add('hidden');setSyncBadge('Cloud Beta','cloud');
+  $('#view').innerHTML=`<section class="auth-wrap">
+    <div class="hero"><div class="eyebrow" style="color:#FFD5E6">Mayo 2026 Program Companion</div><h2>Finish your account setup</h2><p>Create your password and review the program’s Privacy Notice and Terms of Use.</p></div>
+    <div class="card auth-card">
+      <div class="form-group"><label>New password</label><input id="invitePassword" type="password" autocomplete="new-password" placeholder="At least 6 characters"></div>
+      <div class="form-group"><label>Confirm new password</label><input id="invitePassword2" type="password" autocomplete="new-password" placeholder="Re-enter your password"></div>
+      <label class="consent-row"><input id="invitePrivacyConsent" type="checkbox"><span>I have read the <button type="button" class="text-link" id="invitePrivacyLink">Privacy Notice</button> and understand that my information may be processed and stored in the United States for operation of the Mayo 2026 Program Companion.</span></label>
+      <label class="consent-row"><input id="inviteTermsConsent" type="checkbox"><span>I agree to the <button type="button" class="text-link" id="inviteTermsLink">Terms of Use</button>, including the requirement not to submit or exchange confidential, sensitive, private, or other information that should not be disclosed.</span></label>
+      <button class="btn pink full" id="finishInviteSetup">Set Password & Enter App</button>
+      <div id="inviteSetupStatus" class="muted center auth-status"></div>
+    </div>
+  </section>`;
+  $('#invitePrivacyLink').onclick=openPrivacyNotice;$('#inviteTermsLink').onclick=openTermsOfUse;
+  $('#finishInviteSetup').onclick=async()=>{
+    const p1=$('#invitePassword').value,p2=$('#invitePassword2').value;
+    if(p1.length<6)return alert('Use a password with at least 6 characters.');
+    if(p1!==p2)return alert('The passwords do not match.');
+    if(!$('#invitePrivacyConsent').checked||!$('#inviteTermsConsent').checked)return alert('Please review and accept the Privacy Notice and Terms of Use.');
+    const btn=$('#finishInviteSetup');btn.disabled=true;$('#inviteSetupStatus').textContent='Finishing setup…';
+    try{
+      await MayoCloud.updatePassword(p1);
+      clearInviteSetupFlag();
+      document.body.classList.remove('auth-screen');$('#roleBadge').classList.remove('hidden');
+      await refreshCloudState({renderPage:false});
+      MayoCloud.subscribe(()=>refreshCloudState());
+      route='home';render();
+    }catch(e){showError(e);$('#inviteSetupStatus').textContent='Could not finish account setup. Please reopen the invitation email and try again.';btn.disabled=false;}
+  };
+}
+
 function renderHome(){
   setTitle('Home');const u=currentUser();const now=Date.now();const next=state.schedule.find(e=>!e.startsAt||new Date(e.startsAt).getTime()>=now)||state.schedule[0];const done=state.missions.filter(m=>m.done).length;
   $('#view').innerHTML=`<section class="hero"><h2>Welcome, ${esc((u.name||'Participant').split(' ')[0])}!</h2><p class="hero-message"><strong>Connect • Contribute • Stretch</strong><br><span>Stay coachable. Step outside your comfort zone.</span></p></section>
@@ -667,7 +705,8 @@ function openAdmin(){
   openModal(`<h2 id="modalTitle">Program Admin</h2>
     <p class="muted admin-intro">Manage operational data here. Changes are saved to Supabase and appear in the participant app without a GitHub update.</p>
     <div class="tabs admin-tabs">
-      <button class="tab active" data-atab="mission">Missions</button>
+      <button class="tab active" data-atab="users">Users</button>
+      <button class="tab" data-atab="mission">Missions</button>
       <button class="tab" data-atab="teams">Teams</button>
       <button class="tab" data-atab="schedule">Schedule</button>
       <button class="tab" data-atab="announce">Announcement</button>
@@ -678,10 +717,11 @@ function openAdmin(){
     $$('[data-atab]').forEach(x=>x.classList.toggle('active',x===b));
     renderAdminTab(b.dataset.atab);
   });
-  renderAdminTab('mission');
+  renderAdminTab('users');
 }
 function renderAdminTab(tab){
   const b=$('#adminBody');if(!b)return;
+  if(tab==='users')return renderUserAdmin();
   if(tab==='mission')return renderMissionAdmin();
   if(tab==='teams')return renderTeamAdmin();
   if(tab==='schedule')return renderScheduleAdmin();
@@ -803,6 +843,109 @@ function renderPollEditor(id){
       }
       renderPollAdmin();
     }catch(e){showError(e)}
+  };
+}
+
+
+let adminUserCache=[];
+function adminUserStatus(u){
+  return u.emailConfirmedAt?'<span class="pill green">Active</span>':'<span class="pill orange">Invited</span>';
+}
+async function renderUserAdmin(){
+  const b=$('#adminBody');if(!b)return;
+  b.innerHTML=`<div class="admin-toolbar"><div><h3>User Management</h3><p class="muted">Invite, edit, reset, or remove program users. Authentication operations are handled securely by Supabase.</p></div><button class="btn pink compact" id="adminInviteUser">+ Invite User</button></div>
+    <input class="search" id="adminUserSearch" placeholder="Search name, email, organization, or team">
+    <div id="adminUserList"><div class="empty">Loading users…</div></div>`;
+  $('#adminInviteUser').onclick=()=>renderUserEditor(null);
+  $('#adminUserSearch').oninput=()=>renderAdminUserList($('#adminUserSearch').value);
+  try{
+    if(backendMode!=='supabase')throw new Error('User management is available only in Cloud mode.');
+    const data=await MayoCloud.adminUserRequest('list');
+    adminUserCache=data.users||[];
+    renderAdminUserList('');
+  }catch(e){
+    $('#adminUserList').innerHTML=`<div class="admin-note"><b>User management is not connected yet.</b><br>${esc(e.message||String(e))}<br><br><span class="muted">Deploy the Supabase Edge Function named <b>admin-users</b>, then reopen this tab.</span></div>`;
+  }
+}
+function renderAdminUserList(query=''){
+  const box=$('#adminUserList');if(!box)return;
+  const q=String(query||'').trim().toLowerCase();
+  const users=adminUserCache.filter(u=>!q||[u.fullName,u.email,u.organization,u.title,u.role,u.teamName].join(' ').toLowerCase().includes(q));
+  box.innerHTML=`<div class="admin-list">${users.map(u=>`<article class="admin-row admin-user-row">
+    <div class="admin-row-main">
+      <div class="admin-row-title"><b>${esc(u.fullName||u.email||'User')}</b>${adminUserStatus(u)}<span class="pill ${u.role==='admin'?'orange':''}">${esc(u.role||'participant')}</span></div>
+      <div class="admin-meta"><span>${esc(u.email||'')}</span>${u.organization?`<span>${esc(u.organization)}</span>`:''}${u.teamName?`<span>Team: ${esc(u.teamName)}</span>`:'<span>Unassigned</span>'}</div>
+      <div class="admin-desc">${u.lastSignInAt?`Last sign in: ${esc(new Date(u.lastSignInAt).toLocaleString())}`:'No sign-in yet'}</div>
+    </div>
+    <div class="admin-row-actions">
+      <button class="btn ghost compact" data-edit-user="${u.id}">Edit</button>
+      <button class="btn ghost compact" data-reset-user="${u.id}" ${u.email?'':'disabled'}>Reset Password</button>
+      <button class="btn ghost compact danger-lite" data-delete-user="${u.id}" ${u.id===MayoCloud.session?.user?.id?'disabled':''}>Delete</button>
+    </div>
+  </article>`).join('')||'<div class="empty">No matching users.</div>'}</div>`;
+  $$('[data-edit-user]').forEach(btn=>btn.onclick=()=>renderUserEditor(btn.dataset.editUser));
+  $$('[data-reset-user]').forEach(btn=>btn.onclick=async()=>{
+    const u=adminUserCache.find(x=>x.id===btn.dataset.resetUser);if(!u?.email)return;
+    if(!confirm(`Send a password reset email to ${u.email}?`))return;
+    btn.disabled=true;const old=btn.textContent;btn.textContent='Sending…';
+    try{
+      await MayoCloud.adminUserRequest('reset-password',{userId:u.id});
+      alert(`Password reset email sent to ${u.email}.`);
+    }catch(e){showError(e);}
+    finally{btn.disabled=false;btn.textContent=old;}
+  });
+  $$('[data-delete-user]').forEach(btn=>btn.onclick=async()=>{
+    const u=adminUserCache.find(x=>x.id===btn.dataset.deleteUser);if(!u)return;
+    const typed=prompt(`Permanently delete ${u.fullName||u.email}?\n\nThis removes the login account and participant data. Program announcements they created will be preserved.\n\nType the user's email to confirm:`);
+    if(typed!==u.email)return;
+    btn.disabled=true;
+    try{
+      await MayoCloud.adminUserRequest('delete',{userId:u.id});
+      adminUserCache=adminUserCache.filter(x=>x.id!==u.id);
+      renderAdminUserList($('#adminUserSearch')?.value||'');
+      await refreshCloudState({renderPage:false});
+    }catch(e){btn.disabled=false;showError(e);}
+  });
+}
+function renderUserEditor(id){
+  const b=$('#adminBody');if(!b)return;
+  const u=id?adminUserCache.find(x=>x.id===id):null;
+  const teams=[...(state.teams||[])].sort((a,b)=>a.name.localeCompare(b.name));
+  b.innerHTML=`<div class="admin-editor">
+    <div class="admin-toolbar"><div><h3>${u?'Edit User':'Invite User'}</h3><p class="muted">${u?'Update program profile, role, and team.':'The user will receive an email invitation and choose their own password.'}</p></div><button class="btn ghost compact" id="userBack">← Back</button></div>
+    <div class="admin-form-grid">
+      <div class="form-group"><label>Full name</label><input id="uName" value="${esc(u?.fullName||'')}" placeholder="First Last"></div>
+      <div class="form-group"><label>Email</label><input id="uEmail" type="email" value="${esc(u?.email||'')}" ${u?'disabled':''} placeholder="user@example.com"></div>
+    </div>
+    <div class="admin-form-grid">
+      <div class="form-group"><label>Organization</label><input id="uOrg" value="${esc(u?.organization||'')}"></div>
+      <div class="form-group"><label>Title</label><input id="uTitle" value="${esc(u?.title||'')}"></div>
+    </div>
+    <div class="admin-form-grid">
+      <div class="form-group"><label>Role</label><select id="uRole"><option value="participant" ${u?.role!=='admin'?'selected':''}>Participant</option><option value="admin" ${u?.role==='admin'?'selected':''}>Admin</option></select></div>
+      <div class="form-group"><label>Team</label><select id="uTeam"><option value="">Unassigned</option>${teams.map(t=>`<option value="${t.id}" ${u?.teamId===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>
+    </div>
+    ${u?'':`<div class="email-notice compact"><b>Invitation flow:</b> the user opens the email invitation, accepts the Privacy Notice / Terms, and creates a password before entering the app.</div>`}
+    <button class="btn pink full" id="uSave">${u?'Save Changes':'Send Invitation'}</button>
+  </div>`;
+  $('#userBack').onclick=renderUserAdmin;
+  $('#uSave').onclick=async()=>{
+    const payload={
+      fullName:$('#uName').value.trim(),
+      email:$('#uEmail').value.trim(),
+      organization:$('#uOrg').value.trim(),
+      title:$('#uTitle').value.trim(),
+      role:$('#uRole').value,
+      teamId:$('#uTeam').value||null
+    };
+    if(!payload.fullName||!payload.email)return alert('Enter a full name and email.');
+    const btn=$('#uSave');btn.disabled=true;const old=btn.textContent;btn.textContent=u?'Saving…':'Sending…';
+    try{
+      if(u)await MayoCloud.adminUserRequest('update',{userId:u.id,...payload});
+      else await MayoCloud.adminUserRequest('invite',payload);
+      await refreshCloudState({renderPage:false});
+      await renderUserAdmin();
+    }catch(e){showError(e);btn.disabled=false;btn.textContent=old;}
   };
 }
 
@@ -996,6 +1139,7 @@ async function bootstrap(){
       if(window.MayoCloud.lastAuthEvent==='PASSWORD_RECOVERY') enterRecoveryMode();
       if(recoveryModeActive()){renderPasswordRecovery();return;}
       if(!result.session){renderLogin();return;}
+      if(inviteSetupRequested()){renderInviteSetup();return;}
       await refreshCloudState({renderPage:false});window.MayoCloud.subscribe(()=>refreshCloudState());render();
     }else{state=loadLocalState();setSyncBadge('Local Demo','local');render();}
   }catch(e){console.error(e);backendMode='local';state=loadLocalState();setSyncBadge('Local fallback','error');render();openModal(`<h2 id="modalTitle">Cloud connection issue</h2><p>The app could not start Supabase, so it opened in Local Demo mode.</p><p class="muted">${esc(e.message||String(e))}</p>`);}
@@ -1013,6 +1157,7 @@ window.addEventListener('mayo-auth-changed',async(e)=>{
   if(authEvent==='TOKEN_REFRESHED')return;
   if(authEvent==='PASSWORD_RECOVERY') enterRecoveryMode();
   if(recoveryModeActive()){renderPasswordRecovery();return;}
+  if(inviteSetupRequested() && e?.detail?.session){renderInviteSetup();return;}
   if(signInFlowActive && e?.detail?.event==='SIGNED_IN')return;
   try{
     const s=e?.detail?.session || await MayoCloud.getSession();

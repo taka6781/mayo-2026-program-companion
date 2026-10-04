@@ -419,6 +419,25 @@
     if(error) throw error;
   }
 
+
+  async function adminUserRequest(action,payload={}) {
+    if (!client || !session?.access_token) throw new Error('You must be signed in.');
+    const c=cfg();
+    const res=await fetch(`${String(c.supabaseUrl||'').replace(/\/$/,'')}/functions/v1/admin-users`,{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':`Bearer ${session.access_token}`,
+        'apikey':c.supabasePublishableKey
+      },
+      body:JSON.stringify({action,...payload,appOrigin:window.location.origin})
+    });
+    let data={};
+    try{data=await res.json();}catch(_e){}
+    if(!res.ok)throw new Error(data?.error||data?.message||`User management request failed (${res.status}).`);
+    return data;
+  }
+
   function subscribe(onChange) {
     if(!client || !session?.user) return;
     if(realtimeChannel) client.removeChannel(realtimeChannel);
@@ -448,7 +467,7 @@
   function getConfig(){ return cfg(); }
 
   window.MayoCloud={
-    configured,wantsCloud,init,sendMagicLink,signInWithPassword,requestPasswordReset,updatePassword,signUpWithPassword,signOut,getSession,loadState,completeMission,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,updateAnnouncement,setAnnouncementActive,createMission,updateMission,setMissionActive,createSchedule,updateSchedule,deleteSchedule,createTeam,renameTeam,deleteTeam,setParticipantTeam,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,updatePoll,setPollActive,closePoll,reopenPoll,votePoll,subscribe,
+    configured,wantsCloud,init,sendMagicLink,signInWithPassword,requestPasswordReset,updatePassword,signUpWithPassword,signOut,getSession,loadState,completeMission,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,updateAnnouncement,setAnnouncementActive,createMission,updateMission,setMissionActive,createSchedule,updateSchedule,deleteSchedule,createTeam,renameTeam,deleteTeam,setParticipantTeam,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,updatePoll,setPollActive,closePoll,reopenPoll,votePoll,adminUserRequest,subscribe,
     saveConfig,clearConfig,getConfig,
     get client(){return client;},get session(){return session;},get lastAuthEvent(){return lastAuthEvent;}
   };
