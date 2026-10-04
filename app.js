@@ -337,7 +337,7 @@ function renderPasswordRecovery(){
 
 function renderHome(){
   setTitle('Home');const u=currentUser();const now=Date.now();const next=state.schedule.find(e=>!e.startsAt||new Date(e.startsAt).getTime()>=now)||state.schedule[0];const done=state.missions.filter(m=>m.done).length;
-  $('#view').innerHTML=`<section class="hero"><div class="eyebrow" style="color:#FFD5E6">Connect • Contribute • Stretch</div><h2>Welcome, ${esc((u.name||'Participant').split(' ')[0])}!</h2><p>People. Learning. Impact. Together.</p></section>
+  $('#view').innerHTML=`<section class="hero"><div class="hero-brand"><img src="jstarx-logo.png" alt="J-StarX" class="hero-program-logo"><div class="hero-program-name">J-StarX US Healthcare Breakthrough Program - Foundational Course</div></div><h2>Welcome, ${esc((u.name||'Participant').split(' ')[0])}!</h2><p class="hero-message">Stay coachable, give first, and turn connections into relationships that go somewhere.<br><span>Be the person people want to build with—not just swap business cards with.</span></p></section>
     <section class="section"><div class="section-head"><h3>Up Next</h3><span class="pill">Program</span></div>${next?`<div class="card clickable" data-event="${next.id}"><div class="time">${esc(next.time)}</div><h3 style="margin:6px 0">${esc(next.title)}</h3><p class="muted">📍 ${esc(next.location)}</p><button class="btn ghost" style="margin-top:8px">View details</button></div>`:'<div class="card empty">No schedule has been published yet.</div>'}</section>
     <section class="section"><div class="section-head"><h3>Today’s Mission</h3><span class="pill pink">${done}/${state.missions.length} complete</span></div>${state.missions.length?missionCard(state.missions.find(m=>!m.done)||state.missions[0]):'<div class="card empty">No missions have been published yet.</div>'}</section>
     <section class="section"><div class="grid two"><div class="card"><div class="kpi"><div class="kpi-icon">★</div><div><strong>${state.points[u.id]||0}</strong><small>My points</small></div></div></div><div class="card"><div class="kpi"><div class="kpi-icon">✉</div><div><strong>${totalUnread()}</strong><small>Unread messages</small></div></div></div></div></section>
@@ -379,10 +379,11 @@ function scheduleDescriptionHtml(e){
   if(addressMatch){address=addressMatch[1].trim();about=about.replace(addressMatch[0],' ').trim();}
   about=about.replace(/\s{2,}/g,' ').trim();
   const rows=[];
-  if(about)rows.push(`<div class="schedule-info-row"><span class="schedule-info-label about">About</span><span>${esc(about)}</span></div>`);
+  // The general About text is intentionally omitted because most schedule
+  // descriptions duplicate the event title. Keep only actionable metadata.
   if(speaker)rows.push(`<div class="schedule-info-row"><span class="schedule-info-label speaker">Speaker / Host</span><span>${esc(speaker)}</span></div>`);
   if(address)rows.push(`<div class="schedule-info-row"><span class="schedule-info-label address">Address</span><span>${esc(address)}</span></div>`);
-  return rows.length?`<div class="schedule-info">${rows.join('')}</div>`:`<p class="detail-description">${esc(raw)}</p>`;
+  return rows.length?`<div class="schedule-info">${rows.join('')}</div>`:'';
 }
 function rememberSchedulePosition(){
   if(route!=='schedule')return;
@@ -445,7 +446,6 @@ function renderScheduleList(tab){
 }
 function scheduleDetailCard(e,saved){
   const mapUrl=eventMapUrl(e);
-  const mapButton=`<button class="btn ghost compact" data-map-event="${e.id}" ${mapUrl?'':'disabled'}>Open Map</button>`;
   const attachment=e.attachmentUrl?`<button class="btn ghost compact" data-attachment-event="${e.id}">Open File</button>`:'';
   return `<article class="card detail-card schedule-detail-card">
     <div class="detail-main">
@@ -453,11 +453,12 @@ function scheduleDetailCard(e,saved){
       <h3>${esc(e.title)}</h3>
       ${e.location?`<p class="detail-location">📍 ${esc(e.location)}</p>`:''}
       ${scheduleDescriptionHtml(e)}
-      <div class="inline-actions">${mapButton}${attachment}</div>
     </div>
-    <div class="detail-actions">
-      <button class="btn ghost" data-schedule-toggle="${e.id}">${saved?'★ Remove from My Schedule':'☆ Add to My Schedule'}</button>
-      <button class="btn" data-calendar-event="${e.id}" ${e.startsAt?'':'disabled'}>Add to My Calendar</button>
+    <div class="detail-actions schedule-actions">
+      <button class="btn ghost compact" data-map-event="${e.id}" ${mapUrl?'':'disabled'}>Open Map</button>
+      ${attachment}
+      <button class="btn ghost compact" data-schedule-toggle="${e.id}">${saved?'★ Remove from My Schedule':'☆ Add to My Schedule'}</button>
+      <button class="btn compact" data-calendar-event="${e.id}" ${e.startsAt?'':'disabled'}>Add to My Calendar</button>
     </div>
   </article>`;
 }
