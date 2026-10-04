@@ -422,7 +422,7 @@
 
   async function adminUserRequest(action,payload={}) {
     if (!client || !session?.access_token) throw new Error('You must be signed in.');
-    const {data,error}=await client.functions.invoke('admin-users',{
+    const {data,error}=await client.functions.invoke('admin-users-v2',{
       body:{action,...payload,appOrigin:window.location.origin}
     });
     if(error){
