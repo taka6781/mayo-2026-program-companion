@@ -221,3 +221,20 @@ button{cursor:pointer}
     width:100%!important;
   }
 }
+
+
+/* v6.9 header proportion tweak */
+.topbar-jstarx-logo{
+  width:108px!important;
+}
+.topbar-program-name{
+  font-size:16px!important;
+  line-height:1.18!important;
+}
+@media(max-width:620px){
+  .topbar-jstarx-logo{width:86px!important}
+  .topbar-program-name{
+    font-size:12.5px!important;
+    max-width:250px!important;
+  }
+}
