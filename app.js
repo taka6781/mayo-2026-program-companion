@@ -35,8 +35,10 @@ const seed = {
 };
 
 const storageKey='mayo2026PrototypeStateV2';
+const routeKey='mayo2026ActiveRoute';
 let state=loadLocalState();
-let route='home';
+let route=sessionStorage.getItem(routeKey)||'home';
+if(!['home','schedule','challenge','people','messages','more'].includes(route))route='home';
 let interval=null;
 let audioCtx=null;
 let timer={total:180,remaining:180,running:false};
@@ -113,7 +115,13 @@ function openPrivacyNotice(){openModal(privacyNoticeHtml())}
 function openTermsOfUse(){openModal(termsOfUseHtml())}
 function totalUnread(){return Object.values(state.unread||{}).reduce((a,b)=>a+(Number(b)||0),0)}
 function updateBadge(){const b=$('#messageBadge');if(!b)return;const n=totalUnread();b.textContent=n;b.classList.toggle('hidden',!n)}
-function navTo(r){route=r;$$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.route===r));render()}
+function navTo(r){
+  route=r;
+  sessionStorage.setItem(routeKey,route);
+  $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.route===r));
+  render();
+  requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'auto'}));
+}
 function setTitle(t){$('#pageTitle').textContent=t}
 function openModal(html){$('#modalContent').innerHTML=html;$('#modal').classList.remove('hidden')}
 function closeModal(){$('#modal').classList.add('hidden');$('#modalContent').innerHTML=''}
@@ -165,6 +173,8 @@ async function loadSignedInStateWithRetry(){
 
 function render(){
   const map={home:renderHome,schedule:renderSchedule,challenge:renderChallenge,people:renderPeople,messages:renderMessages,more:renderMore};
+  sessionStorage.setItem(routeKey,route);
+  $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.route===route));
   (map[route]||renderHome)();updateBadge();
   const rb=$('#roleBadge');rb.classList.remove('hidden');rb.textContent=state.role==='admin'?'Admin':'Participant';
   document.body.classList.remove('auth-screen');
@@ -516,7 +526,34 @@ function showMission(id){const m=state.missions.find(x=>x.id===id);if(!m)return;
 
 function renderPeople(){setTitle('People');$('#view').innerHTML=`<div class="tabs"><button class="tab active" data-ptab="all">All Participants</button><button class="tab" data-ptab="team">My Team</button></div><input id="peopleSearch" class="search" placeholder="Search by name, affiliation, or interest…"><div id="peopleList" class="people-grid"></div>`;$('#peopleSearch').oninput=()=>renderPeopleList($('#peopleSearch').value,$('.tab.active')?.dataset.ptab||'all');$$('[data-ptab]').forEach(b=>b.onclick=()=>{$$('[data-ptab]').forEach(x=>x.classList.toggle('active',x===b));renderPeopleList($('#peopleSearch').value,b.dataset.ptab)});renderPeopleList('','all');}
 function renderPeopleList(q,tab){const u=currentUser();q=(q||'').toLowerCase();const list=state.people.filter(p=>p.id!==u.id).filter(p=>tab!=='team'||p.team===u.team).filter(p=>[p.name,p.org,p.title,p.interests,p.bio].join(' ').toLowerCase().includes(q));$('#peopleList').innerHTML=list.map(p=>`<article class="person-card"><div class="person-top"><div class="avatar">${esc(p.initials)}</div><div class="main"><h3>${esc(p.name)}</h3><p class="person-role">${esc(p.org)}${p.title?' • '+esc(p.title):''}</p>${p.team?`<span class="pill">Team ${esc(p.team)}</span>`:''}</div></div>${p.interests?`<div class="person-field"><b>Interests</b><span>${esc(p.interests)}</span></div>`:''}${p.bio?`<div class="person-field"><b>About</b><span>${esc(p.bio)}</span></div>`:''}<div class="person-actions"><button class="btn pink" data-message-person="${p.id}">Message</button><button class="btn ghost" data-kudos-person="${p.id}">Kudo</button></div></article>`).join('')||'<div class="empty">No participants found.</div>';$$('[data-message-person]').forEach(el=>el.onclick=()=>{route='messages';render();openChat('direct',el.dataset.messagePerson)});$$('[data-kudos-person]').forEach(el=>el.onclick=()=>openKudosComposer(el.dataset.kudosPerson));}
-function openKudosComposer(id){const p=person(id);if(!p)return;openModal(`<h2 id="modalTitle">Give Kudos to ${esc(p.name)}</h2><p class="muted">Recognize something specific they did that made the program or team better.</p><textarea id="kudosText" placeholder="Thanks for making the discussion inclusive…"></textarea><div class="spacer"></div><button class="btn pink full" id="sendKudos">Send Kudos</button>`);$('#sendKudos').onclick=async()=>{const text=$('#kudosText').value.trim();if(!text)return alert('Write a short kudos message.');try{if(backendMode==='supabase'){await MayoCloud.giveKudos(id,text);await refreshCloudState({renderPage:false});}else{state.kudos.push({id:'k'+Date.now(),from:state.currentUserId,to:id,text});save();}closeModal();alert('Kudos sent.');}catch(e){showError(e)}}}
+function openKudosComposer(id){
+  const p=person(id);if(!p)return;
+  openModal(`<h2 id="modalTitle">Give Kudos to ${esc(p.name)}</h2>
+    <p class="muted">Recognize something specific they did that made the program or team better.</p>
+    <div class="kudo-points-note">Giving Kudos: <b>+5 pts</b> to you · <b>+3 pts</b> to the recipient<br><small>One Kudo per person per program day.</small></div>
+    <textarea id="kudosText" placeholder="Thanks for making the discussion inclusive…"></textarea>
+    <div class="spacer"></div><button class="btn pink full" id="sendKudos">Send Kudos</button>`);
+  $('#sendKudos').onclick=async()=>{
+    const text=$('#kudosText').value.trim();if(!text)return alert('Write a short kudos message.');
+    try{
+      if(backendMode==='supabase'){
+        await MayoCloud.giveKudos(id,text);
+        await refreshCloudState({renderPage:false});
+      }else{
+        const today=new Date().toISOString().slice(0,10);
+        const already=(state.kudos||[]).some(k=>k.from===state.currentUserId&&k.to===id&&String(k.createdAt||'').slice(0,10)===today);
+        if(already)throw new Error('You already gave this participant Kudos today. Try again tomorrow.');
+        state.kudos.push({id:'k'+Date.now(),from:state.currentUserId,to:id,text,createdAt:new Date().toISOString()});save();
+      }
+      closeModal();alert('Kudos sent. +5 points to you and +3 points to the recipient.');
+    }catch(e){
+      const msg=String(e?.message||e);
+      if(msg.includes('kudos_one_per_recipient_per_program_day')||msg.toLowerCase().includes('duplicate key')){
+        alert('You already gave this participant Kudos today. Try again tomorrow.');
+      }else showError(e);
+    }
+  };
+}
 function showPerson(id){const p=person(id);if(!p)return;openModal(`<h2 id="modalTitle">${esc(p.name)}</h2><div class="avatar" style="width:74px;height:74px;font-size:20px">${esc(p.initials)}</div><p><b>${esc(p.org)}</b><br>${esc(p.title)}</p><p><b>Interests</b><br>${esc(p.interests)}</p><p><b>About</b><br>${esc(p.bio)}</p><div class="person-actions"><button class="btn pink" id="messagePerson">Message</button><button class="btn ghost" id="kudosPerson">Kudo</button></div>`);$('#messagePerson').onclick=()=>{closeModal();route='messages';render();openChat('direct',id)};$('#kudosPerson').onclick=()=>openKudosComposer(id);}
 function renderMessages(){setTitle('Messages');$('#view').innerHTML=`<div class="tabs"><button class="tab active" data-mtab="all">All</button><button class="tab" data-mtab="direct">Direct</button><button class="tab" data-mtab="team">Team</button><button class="tab" data-mtab="announcements">Announcements</button></div><div id="messageList" class="list"></div>`;$$('[data-mtab]').forEach(b=>b.onclick=()=>{$$('[data-mtab]').forEach(x=>x.classList.toggle('active',x===b));renderMessageList(b.dataset.mtab)});renderMessageList('all');}
 function renderMessageList(tab){const items=[];if(['all','announcements'].includes(tab)){const a=state.messages.announcements[0];items.push({type:'announcements',title:'Announcements',sub:a?.title||'No announcements yet',time:a?.ts||'',unread:state.unread.announcements||0,avatar:'📣'});}if(['all','team'].includes(tab)&&currentUser().team){const last=state.messages.team.at(-1);items.push({type:'team',title:`Team ${currentUser().team}`,sub:last?.text||'Start your team chat',time:last?.ts||'',unread:state.unread.team||0,avatar:'👥'});}if(['all','direct'].includes(tab))Object.entries(state.messages.direct||{}).forEach(([pid,msgs])=>{const p=person(pid);if(!p)return;const last=msgs.at(-1);items.push({type:'direct',id:pid,title:p.name,sub:last?.text||'',time:last?.ts||'',unread:state.unread[pid]||0,avatar:p.initials});});$('#messageList').innerHTML=items.map(x=>`<div class="list-row clickable" data-chat-type="${x.type}" data-chat-id="${x.id||''}"><div class="avatar">${esc(x.avatar)}</div><div class="main message-preview"><div class="main"><div class="meta"><h4 class="${x.unread?'unread':''}">${esc(x.title)}</h4><span class="time">${esc(x.time)}</span></div><div class="snippet ${x.unread?'unread':''}">${esc(x.sub)}</div></div></div>${x.unread?`<span class="badge" style="position:static">${x.unread}</span>`:'›'}</div>`).join('')||'<div class="empty">No messages yet.</div>';$$('[data-chat-type]').forEach(el=>el.onclick=()=>openChat(el.dataset.chatType,el.dataset.chatId));}

@@ -166,8 +166,27 @@
     const missions=(missionsR.data||[]).map(m=>({id:m.id,title:m.title,description:m.description||'',category:m.category,points:m.points,icon:m.category==='Connect'?'👥':m.category==='Stretch'?'🙋':m.category==='Contribute'?'🤝':'⭐',done:completed.get(m.id)==='approved',status:completed.get(m.id)||null,requiresApproval:m.requires_admin_approval}));
     const points={};
     (leaderboardR.data||[]).forEach(r=>{points[r.id]=r.points||0;});
-    const teamLeaderboard=(teamLeaderboardR.data||[]).map(r=>({id:r.team_id,name:r.team_name,points:r.points||0}));
     const kudos=(kudosR.data||[]).map(k=>({id:k.id,from:k.from_profile_id,to:k.to_profile_id,text:k.text,createdAt:k.created_at}));
+
+    // Kudos points are derived from the Kudos records themselves:
+    // giver +5, recipient +3. This keeps the score deterministic and prevents
+    // accidental double-awards if the UI retries.
+    const kudosBonusByProfile={};
+    kudos.forEach(k=>{
+      kudosBonusByProfile[k.from]=(kudosBonusByProfile[k.from]||0)+5;
+      kudosBonusByProfile[k.to]=(kudosBonusByProfile[k.to]||0)+3;
+    });
+    Object.entries(kudosBonusByProfile).forEach(([profileId,bonus])=>{
+      points[profileId]=(points[profileId]||0)+bonus;
+    });
+
+    const teamLeaderboard=(teamLeaderboardR.data||[]).map(r=>({id:r.team_id,name:r.team_name,points:r.points||0}));
+    const teamBonus={};
+    Object.entries(kudosBonusByProfile).forEach(([profileId,bonus])=>{
+      const teamId=teamIdByProfile[profileId];
+      if(teamId)teamBonus[teamId]=(teamBonus[teamId]||0)+bonus;
+    });
+    teamLeaderboard.forEach(t=>{t.points+=(teamBonus[t.id]||0);});
     const bookmarkedEventIds=(bookmarksR.data||[]).map(r=>r.event_id);
 
     const readSet=new Set((readsR.data||[]).map(r=>r.announcement_id));
@@ -261,8 +280,12 @@
     if(error) throw error;
   }
   async function giveKudos(toProfileId,text) {
+    if(toProfileId===session.user.id) throw new Error('You cannot give Kudos to yourself.');
     const {error}=await client.from('kudos').insert({from_profile_id:session.user.id,to_profile_id:toProfileId,text});
-    if(error) throw error;
+    if(error){
+      if(error.code==='23505') throw new Error('kudos_one_per_recipient_per_program_day');
+      throw error;
+    }
   }
   async function toggleScheduleBookmark(eventId,isBookmarked) {
     if(isBookmarked){

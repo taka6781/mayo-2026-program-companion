@@ -1,6 +1,6 @@
 {
   "name": "J-StarX US Healthcare Breakthrough Program - Foundational Course",
-  "short_name": "J-StarX 2026",
+  "short_name": "J-StarX Healthcare",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#F5F7FA",
@@ -8,7 +8,7 @@
   "description": "Program companion prototype for Mayo 2026",
   "icons": [
     {
-      "src": "icon.svg",
+      "src": "planex-favicon.png",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

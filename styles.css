@@ -77,3 +77,29 @@ button{cursor:pointer}
 /* v6.5 branding + tighter schedule actions */
 .hero-brand{display:flex;align-items:center;gap:12px;margin-bottom:16px;position:relative;z-index:1}.hero-program-logo{display:block;width:98px;height:auto;background:#fff;border-radius:10px;padding:7px 9px;box-shadow:0 3px 12px rgba(0,0,0,.10)}.hero-program-name{max-width:440px;font-size:12px;line-height:1.35;font-weight:800;letter-spacing:.01em;color:#fff}.hero-message{font-size:14px;line-height:1.5;max-width:650px;position:relative;z-index:1}.hero-message span{opacity:.92;font-weight:700}.brand-footer{display:flex;align-items:center;justify-content:center;gap:8px;padding:18px 16px 104px;color:#8A98A9;font-size:10px;text-align:center}.planex-mark{width:48px;height:auto;opacity:.42;mix-blend-mode:multiply}.schedule-actions{align-self:start;gap:7px}.schedule-actions .btn{min-height:34px!important;padding:7px 9px!important;font-size:11px!important;border-radius:9px}.schedule-actions .btn:disabled{opacity:.42;cursor:not-allowed}.schedule-info-label.about{display:none}
 @media(max-width:620px){.hero-brand{align-items:flex-start}.hero-program-logo{width:82px}.hero-program-name{font-size:11px}.schedule-actions{display:grid!important;grid-template-columns:1fr 1fr!important;width:100%}.schedule-actions .btn{font-size:11px!important}.brand-footer{padding-bottom:98px}}
+
+
+/* v6.6 navigation state, branding, schedule action styling */
+.topbar-brand-block{min-width:0}
+.topbar-program{display:flex;align-items:center;gap:9px;min-width:0;margin-bottom:2px}
+.topbar-jstarx-logo{width:68px;height:auto;display:block;background:#fff;border-radius:7px;padding:3px 5px;flex:0 0 auto}
+.topbar-program-name{font-size:10.5px;line-height:1.25;font-weight:800;color:#536579;max-width:420px}
+.brand-footer{gap:12px;font-size:10.5px;color:#68788A}
+.planex-mark{width:92px;height:auto;opacity:1;mix-blend-mode:normal}
+.schedule-actions .btn{
+  background:rgba(242,141,190,.17)!important;
+  border-color:rgba(224,92,157,.48)!important;
+  color:#7A2852!important;
+  font-weight:800!important;
+  box-shadow:none!important;
+}
+.schedule-actions .btn:hover{background:rgba(242,141,190,.26)!important}
+.schedule-actions .btn:disabled{background:rgba(242,141,190,.09)!important;color:#9C7186!important}
+.kudo-points-note{margin:10px 0 12px;padding:10px 12px;border-radius:12px;background:#FFF0F7;border:1px solid #F2B8D3;color:#74304F;font-size:12.5px;line-height:1.45}
+.kudo-points-note small{color:#7D6470}
+@media(max-width:620px){
+  .topbar-program-name{max-width:220px;font-size:9.5px}
+  .topbar-jstarx-logo{width:58px}
+  .planex-mark{width:82px}
+  .brand-footer{align-items:flex-start;text-align:left}
+}
