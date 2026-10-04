@@ -619,7 +619,7 @@ function pollIsOpen(p){return !!p.isOpen && (!p.closesAt || new Date(p.closesAt)
 function pollStatusText(p){if(pollIsOpen(p))return p.closesAt?`Open until ${new Date(p.closesAt).toLocaleString()}`:'Open';return 'Closed'}
 function voteLabel(p){return p.options.find(o=>o.id===p.myVote)?.label||'No vote recorded'}
 function pollResultsHtml(p){const total=pollTotal(p);return `<div class="poll-results">${p.options.map(o=>{const pct=total?Math.round(o.votes/total*100):0;return `<div class="poll-result-row"><div><b>${esc(o.label)}</b><span>${o.votes} vote${o.votes===1?'':'s'} • ${pct}%</span></div><div class="progress"><span style="width:${pct}%"></span></div></div>`}).join('')}<p class="muted">${total} total vote${total===1?'':'s'}</p></div>`}
-function toolPoll(){const polls=[...(state.polls||[])].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));if(!polls.length)return openModal('<h2 id="modalTitle">Quick Poll</h2><div class="empty">No polls yet.</div>');const isAdmin=state.role==='admin';openModal(`<h2 id="modalTitle">Quick Poll</h2><p class="muted">${isAdmin?'Live results are visible to admins. Participants see results only after a poll closes.':'Vote while a poll is open. Your past choices remain visible here.'}</p><div id="pollList" class="list">${polls.map(p=>pollCardHtml(p,isAdmin)).join('')}</div>`);bindPollActions();}
+function toolPoll(){const polls=[...(state.polls||[])].filter(p=>state.role==='admin'||p.isActive!==false).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));if(!polls.length)return openModal('<h2 id="modalTitle">Quick Poll</h2><div class="empty">No polls yet.</div>');const isAdmin=state.role==='admin';openModal(`<h2 id="modalTitle">Quick Poll</h2><p class="muted">${isAdmin?'Live results are visible to admins. Participants see results only after a poll closes.':'Vote while a poll is open. Your past choices remain visible here.'}</p><div id="pollList" class="list">${polls.map(p=>pollCardHtml(p,isAdmin)).join('')}</div>`);bindPollActions();}
 function pollCardHtml(p,isAdmin){const open=pollIsOpen(p),my=voteLabel(p);if(isAdmin){return `<section class="card poll-card"><div class="section-head"><h3>${esc(p.question)}</h3><span class="pill ${open?'green':'orange'}">${esc(pollStatusText(p))}</span></div>${pollResultsHtml(p)}${open?`<button class="btn pink full" data-close-poll="${p.id}">Close & Publish Results</button>`:'<p class="muted">Results published to participants.</p>'}</section>`}return `<section class="card poll-card"><div class="section-head"><h3>${esc(p.question)}</h3><span class="pill ${open?'green':'orange'}">${esc(pollStatusText(p))}</span></div>${open?`<div class="poll-choice-list">${p.options.map(o=>`<button class="poll-choice ${p.myVote===o.id?'selected-option':''}" data-vote-poll="${p.id}" data-vote-option="${o.id}">${esc(o.label)}${p.myVote===o.id?' ✓':''}</button>`).join('')}</div><p class="muted">Your vote: <b>${esc(my)}</b>. Interim results are hidden until the poll closes.</p>`:`<p class="muted">You voted: <b>${esc(my)}</b></p>${pollResultsHtml(p)}`}</section>`}
 function bindPollActions(){$$('[data-vote-poll]').forEach(b=>b.onclick=async()=>{const pollId=b.dataset.votePoll,optId=b.dataset.voteOption;try{if(backendMode==='supabase'){await MayoCloud.votePoll(pollId,optId);await refreshCloudState({renderPage:false});}else{const p=state.polls.find(x=>x.id===pollId);if(p){p.myVote=optId;save();}}toolPoll();}catch(e){showError(e)}});$$('[data-close-poll]').forEach(b=>b.onclick=async()=>{if(!confirm('Close this poll and publish results to participants?'))return;try{if(backendMode==='supabase'){await MayoCloud.closePoll(b.dataset.closePoll);await refreshCloudState({renderPage:false});}else{const p=state.polls.find(x=>x.id===b.dataset.closePoll);if(p){p.isOpen=false;p.resultsPublished=true;save();}}toolPoll();}catch(e){showError(e)}})}
 function pollTotal(p){return p.options.reduce((a,b)=>a+(Number(b.votes)||0),0)}
@@ -685,46 +685,127 @@ function renderAdminTab(tab){
   if(tab==='mission')return renderMissionAdmin();
   if(tab==='teams')return renderTeamAdmin();
   if(tab==='schedule')return renderScheduleAdmin();
-  if(tab==='announce'){
-    b.innerHTML=`<div class="admin-editor">
-      <h3>Send Announcement</h3>
-      <div class="form-group"><label>Title</label><input id="aTitle" value="Program Update"></div>
-      <div class="form-group"><label>Message</label><textarea id="aText" placeholder="Announcement to all participants"></textarea></div>
-      <button class="btn pink full" id="aSend">Send Announcement</button>
-    </div>`;
-    $('#aSend').onclick=async()=>{
-      const title=$('#aTitle').value.trim(),text=$('#aText').value.trim();
-      if(!title||!text)return alert('Enter title and message.');
-      try{
-        if(backendMode==='supabase'){await MayoCloud.createAnnouncement(title,text);await refreshCloudState({renderPage:false});}
-        else{state.messages.announcements.unshift({id:'a'+Date.now(),title,text,ts:'Now'});state.unread.announcements++;save();}
-        alert('Announcement sent.');
-        renderAdminTab('announce');
-      }catch(e){showError(e)}
-    };
-    return;
-  }
-  if(tab==='poll'){
-    b.innerHTML=`<div class="admin-editor">
-      <h3>Publish Quick Poll</h3>
-      <div class="form-group"><label>Question</label><input id="qQuestion" placeholder="Which activity helped you connect most?"></div>
-      <div class="form-group"><label>Options (one per line)</label><textarea id="qOptions">Partner interview\nDrawing challenge\nFree networking</textarea></div>
-      <div class="form-group"><label>Automatic close time (optional)</label><input id="qCloseAt" type="datetime-local"></div>
-      <p class="muted">Participants cannot see interim results. Admins can monitor them in Quick Poll.</p>
-      <button class="btn pink full" id="qAdd">Publish Poll</button>
-    </div>`;
-    $('#qAdd').onclick=async()=>{
-      const question=$('#qQuestion').value.trim(),options=$('#qOptions').value.split(/\n/).map(x=>x.trim()).filter(Boolean),closeRaw=$('#qCloseAt').value,closesAt=closeRaw?new Date(closeRaw).toISOString():null;
-      if(!question||options.length<2)return alert('Enter a question and at least two options.');
-      try{
-        if(backendMode==='supabase'){await MayoCloud.createPoll(question,options,closesAt);await refreshCloudState({renderPage:false});}
-        else{state.polls.unshift({id:'poll'+Date.now(),question,isOpen:true,resultsPublished:false,closesAt,createdAt:new Date().toISOString(),options:options.map((label,i)=>({id:'local-'+Date.now()+'-'+i,label,votes:0})),myVote:null});save();}
-        alert('Poll published.');
-        renderAdminTab('poll');
-      }catch(e){showError(e)}
-    };
-  }
+  if(tab==='announce')return renderAnnouncementAdmin();
+  if(tab==='poll')return renderPollAdmin();
 }
+function renderAnnouncementAdmin(){
+  const b=$('#adminBody');
+  const items=[...(state.messages?.announcements||[])].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+  b.innerHTML=`<div class="admin-toolbar"><div><h3>Announcements</h3><p class="muted">Create, edit, and archive program-wide announcements.</p></div><button class="btn pink compact" id="adminAddAnnouncement">+ New Announcement</button></div>
+    <div class="admin-list">${items.map(a=>`<article class="admin-row ${a.isActive===false?'admin-inactive':''}">
+      <div class="admin-row-main">
+        <div class="admin-row-title"><b>${esc(a.title)}</b><span class="pill ${a.isActive===false?'orange':'green'}">${a.isActive===false?'Archived':'Published'}</span></div>
+        <div class="admin-meta"><span>${esc(a.ts||'')}</span></div>
+        <div class="admin-desc">${esc(a.text||'')}</div>
+      </div>
+      <div class="admin-row-actions">
+        <button class="btn ghost compact" data-edit-announcement="${a.id}">Edit</button>
+        <button class="btn ${a.isActive===false?'pink':'ghost'} compact" data-toggle-announcement="${a.id}">${a.isActive===false?'Restore':'Archive'}</button>
+      </div>
+    </article>`).join('')||'<div class="empty">No announcements yet.</div>'}</div>`;
+  $('#adminAddAnnouncement').onclick=()=>renderAnnouncementEditor(null);
+  $$('[data-edit-announcement]').forEach(x=>x.onclick=()=>renderAnnouncementEditor(x.dataset.editAnnouncement));
+  $$('[data-toggle-announcement]').forEach(x=>x.onclick=async()=>{
+    const a=(state.messages?.announcements||[]).find(y=>y.id===x.dataset.toggleAnnouncement);if(!a)return;
+    try{
+      if(backendMode==='supabase'){await MayoCloud.setAnnouncementActive(a.id,a.isActive===false);await refreshCloudState({renderPage:false});}
+      else{a.isActive=a.isActive===false;save();}
+      renderAnnouncementAdmin();
+    }catch(e){showError(e)}
+  });
+}
+function renderAnnouncementEditor(id){
+  const b=$('#adminBody'),a=id?(state.messages?.announcements||[]).find(x=>x.id===id):null;
+  b.innerHTML=`<div class="admin-editor">
+    <div class="admin-toolbar"><h3>${a?'Edit Announcement':'New Announcement'}</h3><button class="btn ghost compact" id="announcementBack">← Back</button></div>
+    <div class="form-group"><label>Title</label><input id="aTitle" value="${esc(a?.title||'')}" placeholder="Program Update"></div>
+    <div class="form-group"><label>Message</label><textarea id="aText" placeholder="Announcement to all participants">${esc(a?.text||'')}</textarea></div>
+    <p class="muted">${a?'Changes appear to participants immediately.':'The announcement is published immediately after you save it.'}</p>
+    <button class="btn pink full" id="aSave">${a?'Save Changes':'Publish Announcement'}</button>
+  </div>`;
+  $('#announcementBack').onclick=renderAnnouncementAdmin;
+  $('#aSave').onclick=async()=>{
+    const title=$('#aTitle').value.trim(),body=$('#aText').value.trim();
+    if(!title||!body)return alert('Enter title and message.');
+    try{
+      if(backendMode==='supabase'){
+        if(a)await MayoCloud.updateAnnouncement(a.id,{title,body});else await MayoCloud.createAnnouncement(title,body);
+        await refreshCloudState({renderPage:false});
+      }else{
+        if(a){a.title=title;a.text=body;}
+        else{state.messages.announcements.unshift({id:'a'+Date.now(),title,text:body,ts:'Now',createdAt:new Date().toISOString(),isActive:true});state.unread.announcements++;}save();
+      }
+      renderAnnouncementAdmin();
+    }catch(e){showError(e)}
+  };
+}
+function pollAdminVoteCount(p){return (p.options||[]).reduce((sum,o)=>sum+(Number(o.votes)||0),0)}
+function renderPollAdmin(){
+  const b=$('#adminBody');
+  const polls=[...(state.polls||[])].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+  b.innerHTML=`<div class="admin-toolbar"><div><h3>Quick Polls</h3><p class="muted">Create polls, edit settings, monitor votes, and control when results are published.</p></div><button class="btn pink compact" id="adminAddPoll">+ New Poll</button></div>
+    <div class="admin-list">${polls.map(p=>{
+      const open=pollIsOpen(p),votes=pollAdminVoteCount(p);
+      return `<article class="admin-row ${p.isActive===false?'admin-inactive':''}">
+        <div class="admin-row-main">
+          <div class="admin-row-title"><b>${esc(p.question)}</b>
+            <span class="pill ${p.isActive===false?'orange':open?'green':'orange'}">${p.isActive===false?'Archived':open?'Open':'Closed'}</span>
+          </div>
+          <div class="admin-meta"><span>${votes} vote${votes===1?'':'s'}</span><span>${p.closesAt?`Closes ${esc(new Date(p.closesAt).toLocaleString())}`:'No automatic close'}</span></div>
+          <div class="admin-desc">${(p.options||[]).map(o=>`${esc(o.label)} (${Number(o.votes)||0})`).join(' • ')}</div>
+        </div>
+        <div class="admin-row-actions">
+          <button class="btn ghost compact" data-edit-poll="${p.id}">Edit</button>
+          ${open?`<button class="btn pink compact" data-close-admin-poll="${p.id}">Close & Publish</button>`:`<button class="btn ghost compact" data-reopen-poll="${p.id}">Reopen</button>`}
+          <button class="btn ${p.isActive===false?'pink':'ghost'} compact" data-toggle-poll="${p.id}">${p.isActive===false?'Restore':'Archive'}</button>
+        </div>
+      </article>`}).join('')||'<div class="empty">No polls yet.</div>'}</div>`;
+  $('#adminAddPoll').onclick=()=>renderPollEditor(null);
+  $$('[data-edit-poll]').forEach(x=>x.onclick=()=>renderPollEditor(x.dataset.editPoll));
+  $$('[data-close-admin-poll]').forEach(x=>x.onclick=async()=>{
+    if(!confirm('Close voting and publish the results to participants?'))return;
+    try{if(backendMode==='supabase'){await MayoCloud.closePoll(x.dataset.closeAdminPoll);await refreshCloudState({renderPage:false});}else{const p=state.polls.find(y=>y.id===x.dataset.closeAdminPoll);if(p){p.isOpen=false;p.resultsPublished=true;p.closedAt=new Date().toISOString();save();}}renderPollAdmin();}catch(e){showError(e)}
+  });
+  $$('[data-reopen-poll]').forEach(x=>x.onclick=async()=>{
+    if(!confirm('Reopen this poll? Published results will be hidden again until it closes.'))return;
+    try{if(backendMode==='supabase'){await MayoCloud.reopenPoll(x.dataset.reopenPoll,null);await refreshCloudState({renderPage:false});}else{const p=state.polls.find(y=>y.id===x.dataset.reopenPoll);if(p){p.isOpen=true;p.resultsPublished=false;p.closedAt=null;save();}}renderPollAdmin();}catch(e){showError(e)}
+  });
+  $$('[data-toggle-poll]').forEach(x=>x.onclick=async()=>{
+    const p=state.polls.find(y=>y.id===x.dataset.togglePoll);if(!p)return;
+    try{if(backendMode==='supabase'){await MayoCloud.setPollActive(p.id,p.isActive===false);await refreshCloudState({renderPage:false});}else{p.isActive=p.isActive===false;save();}renderPollAdmin();}catch(e){showError(e)}
+  });
+}
+function renderPollEditor(id){
+  const b=$('#adminBody'),p=id?state.polls.find(x=>x.id===id):null;
+  const votes=p?pollAdminVoteCount(p):0;
+  const optionsText=(p?.options||[]).map(o=>o.label).join('\n');
+  const closeValue=p?.closesAt?new Date(new Date(p.closesAt).getTime()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16):'';
+  b.innerHTML=`<div class="admin-editor">
+    <div class="admin-toolbar"><h3>${p?'Edit Poll':'New Poll'}</h3><button class="btn ghost compact" id="pollBack">← Back</button></div>
+    <div class="form-group"><label>Question</label><input id="qQuestion" value="${esc(p?.question||'')}" placeholder="Which activity helped you connect most?"></div>
+    <div class="form-group"><label>Options (one per line)</label><textarea id="qOptions" ${votes>0?'disabled':''}>${esc(optionsText||'Partner interview\nDrawing challenge\nFree networking')}</textarea>${votes>0?'<small class="muted">Options are locked because voting has already started.</small>':''}</div>
+    <div class="form-group"><label>Automatic close time (optional)</label><input id="qCloseAt" type="datetime-local" value="${closeValue}"></div>
+    <p class="muted">Participants cannot see interim results. Admins can monitor results in real time.</p>
+    <button class="btn pink full" id="qSave">${p?'Save Changes':'Publish Poll'}</button>
+  </div>`;
+  $('#pollBack').onclick=renderPollAdmin;
+  $('#qSave').onclick=async()=>{
+    const question=$('#qQuestion').value.trim(),options=$('#qOptions').value.split(/\n/).map(x=>x.trim()).filter(Boolean),closeRaw=$('#qCloseAt').value,closesAt=closeRaw?new Date(closeRaw).toISOString():null;
+    if(!question||(!p&&options.length<2)||(!votes&&options.length<2))return alert('Enter a question and at least two options.');
+    try{
+      if(backendMode==='supabase'){
+        if(p)await MayoCloud.updatePoll(p.id,{question,options:votes>0?null:options,closesAt});
+        else await MayoCloud.createPoll(question,options,closesAt);
+        await refreshCloudState({renderPage:false});
+      }else{
+        if(p){p.question=question;p.closesAt=closesAt;if(votes===0)p.options=options.map((label,i)=>({id:`local-${p.id}-${i}`,label,votes:0}));}
+        else state.polls.unshift({id:'poll'+Date.now(),question,isOpen:true,resultsPublished:false,isActive:true,closesAt,createdAt:new Date().toISOString(),options:options.map((label,i)=>({id:'local-'+Date.now()+'-'+i,label,votes:0})),myVote:null});save();
+      }
+      renderPollAdmin();
+    }catch(e){showError(e)}
+  };
+}
+
 function renderMissionAdmin(){
   const b=$('#adminBody');
   const missions=[...(state.missions||[])].sort((a,b)=>(a.isActive===b.isActive?0:a.isActive?-1:1)||a.category.localeCompare(b.category)||a.title.localeCompare(b.title));

@@ -143,7 +143,7 @@
       client.from('announcements').select('*').order('created_at',{ascending:false}),
       client.from('announcement_reads').select('announcement_id,read_at').eq('profile_id',uid),
       client.from('conversation_members').select('conversation_id,last_read_at,conversations(id,conversation_type,title,team_id,created_at)').eq('profile_id',uid),
-      client.from('polls').select('id,question,is_open,results_published,closes_at,closed_at,created_at').order('created_at',{ascending:false}),
+      client.from('polls').select('id,question,is_open,results_published,closes_at,closed_at,created_at,is_active').order('created_at',{ascending:false}),
       client.from('poll_options').select('id,poll_id,label'),
       client.from('poll_votes').select('poll_id,option_id,profile_id')
     ]);
@@ -192,8 +192,12 @@
     const bookmarkedEventIds=(bookmarksR.data||[]).map(r=>r.event_id);
 
     const readSet=new Set((readsR.data||[]).map(r=>r.announcement_id));
-    const announcements=(announcementsR.data||[]).map(a=>({id:a.id,title:a.title,text:a.body,ts:messageTime(a.created_at),createdAt:a.created_at}));
-    const unread={announcements:announcements.filter(a=>!readSet.has(a.id)).length,team:0};
+    const allAnnouncements=(announcementsR.data||[]).map(a=>({
+      id:a.id,title:a.title,text:a.body,ts:messageTime(a.created_at),createdAt:a.created_at,
+      isActive:a.is_active!==false
+    }));
+    const announcements=(me?.role==='admin'?allAnnouncements:allAnnouncements.filter(a=>a.isActive!==false));
+    const unread={announcements:announcements.filter(a=>a.isActive!==false&&!readSet.has(a.id)).length,team:0};
     const direct={};
     let team=[];
     const conversations=[];
@@ -225,6 +229,7 @@
       }
       polls.push({
         id:p.id,question:p.question,isOpen:p.is_open,resultsPublished:p.results_published,closesAt:p.closes_at,closedAt:p.closed_at,createdAt:p.created_at,
+        isActive:p.is_active!==false,
         options:(pollOptionsR.data||[]).filter(o=>o.poll_id===p.id).map(o=>({id:o.id,label:o.label,votes:counts[o.id]||0})),
         myVote:rawVotes.find(v=>v.profile_id===uid)?.option_id||null
       });
@@ -234,7 +239,7 @@
       ...structuredClone(seed),
       currentUserId:uid,
       role:me?.role||'participant',
-      people,teams,schedule,missions,points,polls,kudos,teamLeaderboard,bookmarkedEventIds,
+      people,teams,schedule,missions,points,polls:(me?.role==='admin'?polls:polls.filter(p=>p.isActive!==false)),kudos,teamLeaderboard,bookmarkedEventIds,
       messages:{direct,team,announcements},unread,
       cloud:{conversations,teamId:teamIdByProfile[uid]||null}
     };
@@ -266,7 +271,16 @@
     const {error}=await client.from('announcement_reads').upsert(rows,{onConflict:'announcement_id,profile_id'}); if(error) throw error;
   }
   async function createAnnouncement(title,body) {
-    const {error}=await client.from('announcements').insert({title,body,created_by:session.user.id}); if(error) throw error;
+    const {error}=await client.from('announcements').insert({title,body,is_active:true,created_by:session.user.id});
+    if(error) throw error;
+  }
+  async function updateAnnouncement(id,{title,body}) {
+    const {error}=await client.from('announcements').update({title,body}).eq('id',id);
+    if(error) throw error;
+  }
+  async function setAnnouncementActive(id,isActive) {
+    const {error}=await client.from('announcements').update({is_active:!!isActive}).eq('id',id);
+    if(error) throw error;
   }
   async function createMission({title,description='',category,points=0,requiresApproval=false,isActive=true,activeFrom=null,activeUntil=null}) {
     const {error}=await client.from('missions').insert({
@@ -360,7 +374,10 @@
     return true;
   }
   async function createPoll(question,options,closesAt=null) {
-    const {data,error}=await client.from('polls').insert({question,is_open:true,results_published:false,closes_at:closesAt||null,created_by:session.user.id}).select('id').single();
+    const {data,error}=await client.from('polls').insert({
+      question,is_open:true,results_published:false,closes_at:closesAt||null,
+      is_active:true,created_by:session.user.id
+    }).select('id').single();
     if(error) throw error;
     const rows=(options||[]).map(label=>({poll_id:data.id,label}));
     if(rows.length){
@@ -369,8 +386,36 @@
     }
     return data.id;
   }
+  async function updatePoll(pollId,{question,options=null,closesAt=null}) {
+    const {error}=await client.from('polls').update({question,closes_at:closesAt||null}).eq('id',pollId);
+    if(error) throw error;
+    if(options){
+      const {count,error:voteErr}=await client.from('poll_votes').select('*',{count:'exact',head:true}).eq('poll_id',pollId);
+      if(voteErr) throw voteErr;
+      if((count||0)>0) throw new Error('Poll options cannot be changed after voting has started.');
+      const {error:delErr}=await client.from('poll_options').delete().eq('poll_id',pollId);
+      if(delErr) throw delErr;
+      const rows=options.map(label=>({poll_id:pollId,label}));
+      if(rows.length){
+        const {error:insErr}=await client.from('poll_options').insert(rows);
+        if(insErr) throw insErr;
+      }
+    }
+  }
+  async function setPollActive(pollId,isActive) {
+    const {error}=await client.from('polls').update({is_active:!!isActive}).eq('id',pollId);
+    if(error) throw error;
+  }
   async function closePoll(pollId) {
-    const {error}=await client.from('polls').update({is_open:false,results_published:true,closed_at:new Date().toISOString()}).eq('id',pollId);
+    const {error}=await client.from('polls').update({
+      is_open:false,results_published:true,closed_at:new Date().toISOString()
+    }).eq('id',pollId);
+    if(error) throw error;
+  }
+  async function reopenPoll(pollId,closesAt=null) {
+    const {error}=await client.from('polls').update({
+      is_open:true,results_published:false,closed_at:null,closes_at:closesAt||null
+    }).eq('id',pollId);
     if(error) throw error;
   }
 
@@ -403,7 +448,7 @@
   function getConfig(){ return cfg(); }
 
   window.MayoCloud={
-    configured,wantsCloud,init,sendMagicLink,signInWithPassword,requestPasswordReset,updatePassword,signUpWithPassword,signOut,getSession,loadState,completeMission,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,createMission,updateMission,setMissionActive,createSchedule,updateSchedule,deleteSchedule,createTeam,renameTeam,deleteTeam,setParticipantTeam,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,closePoll,votePoll,subscribe,
+    configured,wantsCloud,init,sendMagicLink,signInWithPassword,requestPasswordReset,updatePassword,signUpWithPassword,signOut,getSession,loadState,completeMission,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,updateAnnouncement,setAnnouncementActive,createMission,updateMission,setMissionActive,createSchedule,updateSchedule,deleteSchedule,createTeam,renameTeam,deleteTeam,setParticipantTeam,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,updatePoll,setPollActive,closePoll,reopenPoll,votePoll,subscribe,
     saveConfig,clearConfig,getConfig,
     get client(){return client;},get session(){return session;},get lastAuthEvent(){return lastAuthEvent;}
   };

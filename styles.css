@@ -293,3 +293,12 @@ button{cursor:pointer}
   .admin-person-row{grid-template-columns:1fr}
   .admin-team-card{align-items:flex-start;flex-direction:column}
 }
+
+
+/* v7.1 Announcement + Poll admin refinements */
+.admin-row-actions .btn{white-space:nowrap}
+.admin-row .admin-desc{white-space:pre-line}
+@media(max-width:620px){
+  .admin-row-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}
+  .admin-row-actions .btn{width:100%}
+}
