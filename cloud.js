@@ -129,8 +129,9 @@
   async function loadState(seed) {
     if (!client || !session?.user) throw new Error('Not signed in.');
     const uid=session.user.id;
-    const [profilesR, membershipsR, scheduleR, missionsR, completionsR, leaderboardR, teamLeaderboardR, kudosR, bookmarksR, announcementsR, readsR, convMembersR, pollsR, pollOptionsR, pollVotesR] = await Promise.all([
+    const [profilesR, teamsR, membershipsR, scheduleR, missionsR, completionsR, leaderboardR, teamLeaderboardR, kudosR, bookmarksR, announcementsR, readsR, convMembersR, pollsR, pollOptionsR, pollVotesR] = await Promise.all([
       client.from('profiles').select('id,full_name,organization,title,interests,bio,role,avatar_url').order('full_name'),
+      client.from('teams').select('id,name,created_at').order('name'),
       client.from('team_members').select('profile_id,team_id,teams(id,name)'),
       client.from('schedule_events').select('*').order('starts_at'),
       client.from('missions').select('*').order('created_at'),
@@ -146,7 +147,7 @@
       client.from('poll_options').select('id,poll_id,label'),
       client.from('poll_votes').select('poll_id,option_id,profile_id')
     ]);
-    const errors=[profilesR,membershipsR,scheduleR,missionsR,completionsR,leaderboardR,teamLeaderboardR,kudosR,announcementsR,readsR,convMembersR,pollsR,pollOptionsR,pollVotesR].map(x=>x.error).filter(Boolean);
+    const errors=[profilesR,teamsR,membershipsR,scheduleR,missionsR,completionsR,leaderboardR,teamLeaderboardR,kudosR,announcementsR,readsR,convMembersR,pollsR,pollOptionsR,pollVotesR].map(x=>x.error).filter(Boolean);
     if(bookmarksR.error) console.warn('Schedule bookmarks are not enabled yet:',bookmarksR.error.message);
     if(errors.length) throw errors[0];
 
@@ -154,8 +155,9 @@
     const teamIdByProfile={};
     (membershipsR.data||[]).forEach(m=>{teamByProfile[m.profile_id]=m.teams?.name||'';teamIdByProfile[m.profile_id]=m.team_id;});
     const people=(profilesR.data||[]).map(p=>({
-      id:p.id,name:p.full_name,initials:initials(p.full_name),org:p.organization||'',title:p.title||'',interests:p.interests||'',team:teamByProfile[p.id]||'',bio:p.bio||'',role:p.role,avatarUrl:p.avatar_url||''
+      id:p.id,name:p.full_name,initials:initials(p.full_name),org:p.organization||'',title:p.title||'',interests:p.interests||'',team:teamByProfile[p.id]||'',teamId:teamIdByProfile[p.id]||null,bio:p.bio||'',role:p.role,avatarUrl:p.avatar_url||''
     }));
+    const teams=(teamsR.data||[]).map(t=>({id:t.id,name:t.name,createdAt:t.created_at}));
     const me=people.find(p=>p.id===uid);
     const completed=new Map((completionsR.data||[]).map(c=>[c.mission_id,c.status]));
     const schedule=(scheduleR.data||[]).map(e=>{
@@ -163,7 +165,7 @@
       const dt=formatDateTime(e.starts_at,timeZone);
       return {id:e.id,date:dt.date,time:formatRange(e.starts_at,e.ends_at,timeZone),timeZone,title:e.title,location:e.location||'',locationUrl:e.location_url||'',type:'session',details:e.description||'',attachmentUrl:e.attachment_url||'',startsAt:e.starts_at,endsAt:e.ends_at};
     });
-    const missions=(missionsR.data||[]).map(m=>({id:m.id,title:m.title,description:m.description||'',category:m.category,points:m.points,icon:m.category==='Connect'?'👥':m.category==='Stretch'?'🙋':m.category==='Contribute'?'🤝':'⭐',done:completed.get(m.id)==='approved',status:completed.get(m.id)||null,requiresApproval:m.requires_admin_approval}));
+    const missions=(missionsR.data||[]).map(m=>({id:m.id,title:m.title,description:m.description||'',category:m.category,points:m.points,icon:m.category==='Connect'?'👥':m.category==='Stretch'?'🙋':m.category==='Contribute'?'🤝':'⭐',done:completed.get(m.id)==='approved',status:completed.get(m.id)||null,requiresApproval:m.requires_admin_approval,isActive:m.is_active!==false,activeFrom:m.active_from||null,activeUntil:m.active_until||null}));
     const points={};
     (leaderboardR.data||[]).forEach(r=>{points[r.id]=r.points||0;});
     const kudos=(kudosR.data||[]).map(k=>({id:k.id,from:k.from_profile_id,to:k.to_profile_id,text:k.text,createdAt:k.created_at}));
@@ -232,7 +234,7 @@
       ...structuredClone(seed),
       currentUserId:uid,
       role:me?.role||'participant',
-      people,schedule,missions,points,polls,kudos,teamLeaderboard,bookmarkedEventIds,
+      people,teams,schedule,missions,points,polls,kudos,teamLeaderboard,bookmarkedEventIds,
       messages:{direct,team,announcements},unread,
       cloud:{conversations,teamId:teamIdByProfile[uid]||null}
     };
@@ -266,14 +268,74 @@
   async function createAnnouncement(title,body) {
     const {error}=await client.from('announcements').insert({title,body,created_by:session.user.id}); if(error) throw error;
   }
-  async function createMission({title,category,points}) {
-    const {error}=await client.from('missions').insert({title,category,points,created_by:session.user.id}); if(error) throw error;
+  async function createMission({title,description='',category,points=0,requiresApproval=false,isActive=true,activeFrom=null,activeUntil=null}) {
+    const {error}=await client.from('missions').insert({
+      title,description,category,points,
+      requires_admin_approval:!!requiresApproval,
+      is_active:isActive!==false,
+      active_from:activeFrom||null,
+      active_until:activeUntil||null,
+      created_by:session.user.id
+    });
+    if(error) throw error;
+  }
+  async function updateMission(id,{title,description='',category,points=0,requiresApproval=false,isActive=true,activeFrom=null,activeUntil=null}) {
+    const {error}=await client.from('missions').update({
+      title,description,category,points,
+      requires_admin_approval:!!requiresApproval,
+      is_active:isActive!==false,
+      active_from:activeFrom||null,
+      active_until:activeUntil||null
+    }).eq('id',id);
+    if(error) throw error;
+  }
+  async function setMissionActive(id,isActive) {
+    const {error}=await client.from('missions').update({is_active:!!isActive}).eq('id',id);
+    if(error) throw error;
   }
   async function votePoll(pollId,optionId) {
     const {error}=await client.from('poll_votes').upsert({poll_id:pollId,option_id:optionId,profile_id:session.user.id},{onConflict:'poll_id,profile_id'}); if(error) throw error;
   }
-  async function createSchedule({title,startsAt,endsAt,location,description,timeZone}) {
-    const {error}=await client.from('schedule_events').insert({title,starts_at:startsAt,ends_at:endsAt||null,location,description:description||'',time_zone:timeZone||null,created_by:session.user.id}); if(error) throw error;
+  async function createSchedule({title,startsAt,endsAt,location,locationUrl='',description,timeZone}) {
+    const {error}=await client.from('schedule_events').insert({
+      title,starts_at:startsAt,ends_at:endsAt||null,location,
+      location_url:locationUrl||null,description:description||'',
+      time_zone:timeZone||null,created_by:session.user.id
+    });
+    if(error) throw error;
+  }
+  async function updateSchedule(id,{title,startsAt,endsAt,location,locationUrl='',description,timeZone}) {
+    const {error}=await client.from('schedule_events').update({
+      title,starts_at:startsAt,ends_at:endsAt||null,location,
+      location_url:locationUrl||null,description:description||'',
+      time_zone:timeZone||null
+    }).eq('id',id);
+    if(error) throw error;
+  }
+  async function deleteSchedule(id) {
+    const {error}=await client.from('schedule_events').delete().eq('id',id);
+    if(error) throw error;
+  }
+  async function createTeam(name) {
+    const {data,error}=await client.from('teams').insert({name}).select('id,name').single();
+    if(error) throw error;
+    return data;
+  }
+  async function renameTeam(id,name) {
+    const {error}=await client.from('teams').update({name}).eq('id',id);
+    if(error) throw error;
+  }
+  async function deleteTeam(id) {
+    const {error}=await client.from('teams').delete().eq('id',id);
+    if(error) throw error;
+  }
+  async function setParticipantTeam(profileId,teamId) {
+    const {error:delErr}=await client.from('team_members').delete().eq('profile_id',profileId);
+    if(delErr) throw delErr;
+    if(teamId){
+      const {error:insErr}=await client.from('team_members').insert({profile_id:profileId,team_id:teamId});
+      if(insErr) throw insErr;
+    }
   }
   async function updateProfile({fullName,organization,title,interests,bio}) {
     const {error}=await client.from('profiles').update({full_name:fullName,organization,title,interests,bio}).eq('id',session.user.id);
@@ -328,6 +390,9 @@
       .on('postgres_changes',{event:'*',schema:'public',table:'poll_options'},trigger)
       .on('postgres_changes',{event:'*',schema:'public',table:'kudos'},trigger)
       .on('postgres_changes',{event:'*',schema:'public',table:'schedule_bookmarks'},trigger)
+      .on('postgres_changes',{event:'*',schema:'public',table:'teams'},trigger)
+      .on('postgres_changes',{event:'*',schema:'public',table:'team_members'},trigger)
+      .on('postgres_changes',{event:'*',schema:'public',table:'profiles'},trigger)
       .subscribe();
   }
 
@@ -338,7 +403,7 @@
   function getConfig(){ return cfg(); }
 
   window.MayoCloud={
-    configured,wantsCloud,init,sendMagicLink,signInWithPassword,requestPasswordReset,updatePassword,signUpWithPassword,signOut,getSession,loadState,completeMission,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,createMission,createSchedule,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,closePoll,votePoll,subscribe,
+    configured,wantsCloud,init,sendMagicLink,signInWithPassword,requestPasswordReset,updatePassword,signUpWithPassword,signOut,getSession,loadState,completeMission,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,createMission,updateMission,setMissionActive,createSchedule,updateSchedule,deleteSchedule,createTeam,renameTeam,deleteTeam,setParticipantTeam,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,closePoll,votePoll,subscribe,
     saveConfig,clearConfig,getConfig,
     get client(){return client;},get session(){return session;},get lastAuthEvent(){return lastAuthEvent;}
   };

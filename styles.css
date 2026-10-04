@@ -250,3 +250,46 @@ button{cursor:pointer}
   opacity:.94;
   font-weight:650;
 }
+
+
+/* v7.0 Program Admin console */
+.admin-intro{margin-top:-4px;margin-bottom:12px}
+.admin-tabs{margin-bottom:16px}
+.admin-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.admin-toolbar h3{margin:0 0 3px}
+.admin-toolbar p{margin:0}
+.admin-list{display:grid;gap:9px}
+.admin-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:13px;background:#fff}
+.admin-row-main{min-width:0}
+.admin-row-title{display:flex;align-items:center;gap:7px;flex-wrap:wrap;color:var(--navy)}
+.admin-meta{display:flex;gap:9px;flex-wrap:wrap;margin-top:5px;color:var(--muted);font-size:11.5px;font-weight:700}
+.admin-desc{margin-top:6px;font-size:12.5px;line-height:1.4;color:var(--muted)}
+.admin-row-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.admin-inactive{opacity:.62;background:#F8FAFC}
+.admin-editor{padding:2px 0 4px}
+.admin-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.admin-check{display:flex;align-items:flex-start;gap:9px;margin:10px 0;padding:10px 11px;border:1px solid var(--line);border-radius:11px;background:#FAFCFE;font-size:12.5px;font-weight:650}
+.admin-check input{margin-top:2px}
+.admin-inline-create{display:grid;grid-template-columns:1fr auto;gap:8px;margin:10px 0 14px}
+.admin-inline-create input{min-width:0}
+.admin-team-summary{display:grid;gap:8px;margin-bottom:18px}
+.admin-team-card{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.admin-team-card small,.admin-person-row small{display:block;margin-top:2px;color:var(--muted)}
+.admin-team-card>div:last-child{display:flex;gap:6px}
+.admin-subhead{margin:14px 0 8px}
+.admin-person-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,220px);gap:12px;align-items:center;padding:9px 11px;border-bottom:1px solid var(--line);background:#fff}
+.admin-person-row:first-child{border-radius:12px 12px 0 0}
+.admin-person-row:last-child{border-bottom:0;border-radius:0 0 12px 12px}
+.admin-person-row select{width:100%}
+.danger-lite{color:var(--danger)!important}
+.modal-panel:has(.admin-tabs){max-width:760px}
+@media(max-width:620px){
+  .admin-toolbar{align-items:stretch;flex-direction:column}
+  .admin-toolbar>.btn{align-self:flex-start}
+  .admin-row{grid-template-columns:1fr}
+  .admin-row-actions{justify-content:flex-start}
+  .admin-form-grid{grid-template-columns:1fr}
+  .admin-inline-create{grid-template-columns:1fr}
+  .admin-person-row{grid-template-columns:1fr}
+  .admin-team-card{align-items:flex-start;flex-direction:column}
+}

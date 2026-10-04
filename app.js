@@ -21,6 +21,9 @@ const seed = {
     {id:'e5',date:'Mon, Sep 14, 2026',time:'2:00 PM – 3:30 PM',title:'Innovation Session',location:'Plummer Building – Room 302',type:'session',details:'Interactive innovation session and discussion.'},
     {id:'e6',date:'Mon, Sep 14, 2026',time:'6:00 PM – 8:00 PM',title:'Dinner & Networking',location:'The Kahler Grand Hotel',type:'network',details:'Dinner and informal networking.'}
   ],
+  teams: [
+    {id:'t1',name:'Alpha'},{id:'t2',name:'Beta'},{id:'t3',name:'Gamma'}
+  ],
   missions: [
     {id:'m1',title:'Meet 3 new people',category:'Connect',points:50,icon:'👥',done:false},
     {id:'m2',title:'Join a session and ask one question',category:'Stretch',points:30,icon:'🙋',done:false},
@@ -626,17 +629,280 @@ function toggleTimer(){timer.running=!timer.running;$('#timerStart').textContent
 
 function renderTimer(){const d=$('#timerDisplay'),r=$('#timerRing');if(!d)return;const m=Math.floor(timer.remaining/60),s=timer.remaining%60;d.textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;r.classList.toggle('warning',timer.remaining<=60&&timer.remaining>30);r.classList.toggle('danger',timer.remaining<=30&&timer.remaining>0);r.classList.toggle('done',timer.remaining===0)}
 
-function openAdmin(){if(state.role!=='admin'){openModal(`<h2 id="modalTitle">Admin Panel</h2><div class="admin-note">Your account is a Participant. Admin privileges are assigned in the beta database.</div>`);return;}openModal(`<h2 id="modalTitle">Admin Panel</h2><div class="tabs"><button class="tab active" data-atab="announce">Announcement</button><button class="tab" data-atab="mission">Mission</button><button class="tab" data-atab="schedule">Schedule</button><button class="tab" data-atab="poll">Poll</button></div><div id="adminBody"></div>`);$$('[data-atab]').forEach(b=>b.onclick=()=>{$$('[data-atab]').forEach(x=>x.classList.toggle('active',x===b));renderAdminTab(b.dataset.atab)});renderAdminTab('announce');}
+
+function adminFmtDate(iso){
+  if(!iso)return '';
+  try{return new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date(iso));}
+  catch(_e){return '';}
+}
+function isoToInputInZone(iso,timeZone){
+  if(!iso)return '';
+  const d=new Date(iso);
+  const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:timeZone||undefined,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+  const p=Object.fromEntries(fmt.formatToParts(d).filter(x=>x.type!=='literal').map(x=>[x.type,x.value]));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+}
+function zoneOffsetMs(date,timeZone){
+  const fmt=new Intl.DateTimeFormat('en-US',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+  const p=Object.fromEntries(fmt.formatToParts(date).filter(x=>x.type!=='literal').map(x=>[x.type,x.value]));
+  const asUtc=Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute,+p.second);
+  return asUtc-date.getTime();
+}
+function localInputToIso(value,timeZone){
+  if(!value)return null;
+  const m=value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if(!m)return new Date(value).toISOString();
+  const wall=Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],0);
+  let probe=new Date(wall);
+  let actual=wall-zoneOffsetMs(probe,timeZone);
+  probe=new Date(actual);
+  actual=wall-zoneOffsetMs(probe,timeZone);
+  return new Date(actual).toISOString();
+}
+function openAdmin(){
+  if(state.role!=='admin'){
+    openModal(`<h2 id="modalTitle">Admin Panel</h2><div class="admin-note">Your account is a Participant. Admin privileges are required.</div>`);
+    return;
+  }
+  openModal(`<h2 id="modalTitle">Program Admin</h2>
+    <p class="muted admin-intro">Manage operational data here. Changes are saved to Supabase and appear in the participant app without a GitHub update.</p>
+    <div class="tabs admin-tabs">
+      <button class="tab active" data-atab="mission">Missions</button>
+      <button class="tab" data-atab="teams">Teams</button>
+      <button class="tab" data-atab="schedule">Schedule</button>
+      <button class="tab" data-atab="announce">Announcement</button>
+      <button class="tab" data-atab="poll">Poll</button>
+    </div>
+    <div id="adminBody"></div>`);
+  $$('[data-atab]').forEach(b=>b.onclick=()=>{
+    $$('[data-atab]').forEach(x=>x.classList.toggle('active',x===b));
+    renderAdminTab(b.dataset.atab);
+  });
+  renderAdminTab('mission');
+}
 function renderAdminTab(tab){
   const b=$('#adminBody');if(!b)return;
-  if(tab==='announce')b.innerHTML=`<div class="form-group"><label>Title</label><input id="aTitle" value="Program Update"></div><div class="form-group"><label>Message</label><textarea id="aText" placeholder="Announcement to all participants"></textarea></div><button class="btn pink full" id="aSend">Send Announcement</button>`;
-  if(tab==='mission')b.innerHTML=`<div class="form-group"><label>Mission title</label><input id="mTitle" placeholder="Talk to someone new"></div><div class="form-group"><label>Category</label><select id="mCat"><option>Connect</option><option>Contribute</option><option>Stretch</option><option>Engage</option></select></div><div class="form-group"><label>Points</label><input id="mPoints" type="number" value="20"></div><button class="btn pink full" id="mAdd">Add Mission</button>`;
-  if(tab==='schedule')b.innerHTML=`<div class="form-group"><label>Event title</label><input id="eTitle" placeholder="Evening Reflection"></div><div class="form-group"><label>Start</label><input id="eStart" type="datetime-local"></div><div class="form-group"><label>End</label><input id="eEnd" type="datetime-local"></div><div class="form-group"><label>Location</label><input id="eLocation" placeholder="Hotel Lobby"></div><button class="btn pink full" id="eAdd">Add Event</button>`;
-  if(tab==='poll')b.innerHTML=`<div class="form-group"><label>Question</label><input id="qQuestion" placeholder="Which activity helped you connect most?"></div><div class="form-group"><label>Options (one per line)</label><textarea id="qOptions">Partner interview\nDrawing challenge\nFree networking</textarea></div><div class="form-group"><label>Automatic close time (optional)</label><input id="qCloseAt" type="datetime-local"></div><p class="muted">Participants cannot see interim results. If a close time is set, voting stops automatically and results become visible at that time. You can also close the poll manually from Quick Poll.</p><button class="btn pink full" id="qAdd">Publish Poll</button>`;
-  if($('#aSend'))$('#aSend').onclick=async()=>{const title=$('#aTitle').value.trim(),text=$('#aText').value.trim();if(!title||!text)return alert('Enter title and message.');try{if(backendMode==='supabase'){await MayoCloud.createAnnouncement(title,text);closeModal();await refreshCloudState();}else{state.messages.announcements.unshift({id:'a'+Date.now(),title,text,ts:'Now'});state.unread.announcements++;save();alert('Announcement sent in local demo.');openAdmin();}}catch(e){showError(e)}};
-  if($('#mAdd'))$('#mAdd').onclick=async()=>{const title=$('#mTitle').value.trim(),category=$('#mCat').value,points=+$('#mPoints').value||0;if(!title)return alert('Enter a mission title.');try{if(backendMode==='supabase'){await MayoCloud.createMission({title,category,points});closeModal();await refreshCloudState();}else{state.missions.push({id:'m'+Date.now(),title,category,points,icon:'⭐',done:false});save();alert('Mission added.');openAdmin();}}catch(e){showError(e)}};
-  if($('#eAdd'))$('#eAdd').onclick=async()=>{const title=$('#eTitle').value.trim(),start=$('#eStart').value,end=$('#eEnd').value,location=$('#eLocation').value.trim();if(!title)return alert('Enter event title.');try{if(backendMode==='supabase'){if(!start)return alert('Enter a start date/time.');await MayoCloud.createSchedule({title,startsAt:new Date(start).toISOString(),endsAt:end?new Date(end).toISOString():null,location});closeModal();await refreshCloudState();}else{state.schedule.push({id:'e'+Date.now(),date:'Program Day',time:start||'TBD',location,type:'session',details:'Added by admin in local demo.'});save();alert('Event added.');openAdmin();}}catch(e){showError(e)}};
-  if($('#qAdd'))$('#qAdd').onclick=async()=>{const question=$('#qQuestion').value.trim(),options=$('#qOptions').value.split(/\n/).map(x=>x.trim()).filter(Boolean),closeRaw=$('#qCloseAt').value,closesAt=closeRaw?new Date(closeRaw).toISOString():null;if(!question||options.length<2)return alert('Enter a question and at least two options.');try{if(backendMode==='supabase'){await MayoCloud.createPoll(question,options,closesAt);closeModal();await refreshCloudState();}else{state.polls.unshift({id:'poll'+Date.now(),question,isOpen:true,resultsPublished:false,closesAt,createdAt:new Date().toISOString(),options:options.map((label,i)=>({id:'local-'+Date.now()+'-'+i,label,votes:0})),myVote:null});save();closeModal();render();}}catch(e){showError(e)}};
+  if(tab==='mission')return renderMissionAdmin();
+  if(tab==='teams')return renderTeamAdmin();
+  if(tab==='schedule')return renderScheduleAdmin();
+  if(tab==='announce'){
+    b.innerHTML=`<div class="admin-editor">
+      <h3>Send Announcement</h3>
+      <div class="form-group"><label>Title</label><input id="aTitle" value="Program Update"></div>
+      <div class="form-group"><label>Message</label><textarea id="aText" placeholder="Announcement to all participants"></textarea></div>
+      <button class="btn pink full" id="aSend">Send Announcement</button>
+    </div>`;
+    $('#aSend').onclick=async()=>{
+      const title=$('#aTitle').value.trim(),text=$('#aText').value.trim();
+      if(!title||!text)return alert('Enter title and message.');
+      try{
+        if(backendMode==='supabase'){await MayoCloud.createAnnouncement(title,text);await refreshCloudState({renderPage:false});}
+        else{state.messages.announcements.unshift({id:'a'+Date.now(),title,text,ts:'Now'});state.unread.announcements++;save();}
+        alert('Announcement sent.');
+        renderAdminTab('announce');
+      }catch(e){showError(e)}
+    };
+    return;
+  }
+  if(tab==='poll'){
+    b.innerHTML=`<div class="admin-editor">
+      <h3>Publish Quick Poll</h3>
+      <div class="form-group"><label>Question</label><input id="qQuestion" placeholder="Which activity helped you connect most?"></div>
+      <div class="form-group"><label>Options (one per line)</label><textarea id="qOptions">Partner interview\nDrawing challenge\nFree networking</textarea></div>
+      <div class="form-group"><label>Automatic close time (optional)</label><input id="qCloseAt" type="datetime-local"></div>
+      <p class="muted">Participants cannot see interim results. Admins can monitor them in Quick Poll.</p>
+      <button class="btn pink full" id="qAdd">Publish Poll</button>
+    </div>`;
+    $('#qAdd').onclick=async()=>{
+      const question=$('#qQuestion').value.trim(),options=$('#qOptions').value.split(/\n/).map(x=>x.trim()).filter(Boolean),closeRaw=$('#qCloseAt').value,closesAt=closeRaw?new Date(closeRaw).toISOString():null;
+      if(!question||options.length<2)return alert('Enter a question and at least two options.');
+      try{
+        if(backendMode==='supabase'){await MayoCloud.createPoll(question,options,closesAt);await refreshCloudState({renderPage:false});}
+        else{state.polls.unshift({id:'poll'+Date.now(),question,isOpen:true,resultsPublished:false,closesAt,createdAt:new Date().toISOString(),options:options.map((label,i)=>({id:'local-'+Date.now()+'-'+i,label,votes:0})),myVote:null});save();}
+        alert('Poll published.');
+        renderAdminTab('poll');
+      }catch(e){showError(e)}
+    };
+  }
+}
+function renderMissionAdmin(){
+  const b=$('#adminBody');
+  const missions=[...(state.missions||[])].sort((a,b)=>(a.isActive===b.isActive?0:a.isActive?-1:1)||a.category.localeCompare(b.category)||a.title.localeCompare(b.title));
+  b.innerHTML=`<div class="admin-toolbar"><div><h3>Challenge Missions</h3><p class="muted">Edit points, category, description, approval, and visibility.</p></div><button class="btn pink compact" id="adminAddMission">+ Add Mission</button></div>
+    <div class="admin-list">${missions.map(m=>`<article class="admin-row ${m.isActive===false?'admin-inactive':''}">
+      <div class="admin-row-main">
+        <div class="admin-row-title"><b>${esc(m.title)}</b><span class="pill ${m.isActive===false?'orange':'green'}">${m.isActive===false?'Inactive':'Active'}</span></div>
+        <div class="admin-meta"><span>${esc(m.category)}</span><span>${m.points} pts</span>${m.requiresApproval?'<span>Approval required</span>':''}</div>
+        ${m.description?`<div class="admin-desc">${esc(m.description)}</div>`:''}
+      </div>
+      <div class="admin-row-actions">
+        <button class="btn ghost compact" data-edit-mission="${m.id}">Edit</button>
+        <button class="btn ${m.isActive===false?'pink':'ghost'} compact" data-toggle-mission="${m.id}">${m.isActive===false?'Activate':'Deactivate'}</button>
+      </div>
+    </article>`).join('')||'<div class="empty">No missions yet.</div>'}</div>`;
+  $('#adminAddMission').onclick=()=>renderMissionEditor(null);
+  $$('[data-edit-mission]').forEach(x=>x.onclick=()=>renderMissionEditor(x.dataset.editMission));
+  $$('[data-toggle-mission]').forEach(x=>x.onclick=async()=>{
+    const m=state.missions.find(y=>y.id===x.dataset.toggleMission);if(!m)return;
+    try{
+      if(backendMode==='supabase'){await MayoCloud.setMissionActive(m.id,m.isActive===false);await refreshCloudState({renderPage:false});}
+      else{m.isActive=m.isActive===false;save();}
+      renderMissionAdmin();
+    }catch(e){showError(e)}
+  });
+}
+function renderMissionEditor(id){
+  const b=$('#adminBody'),m=id?state.missions.find(x=>x.id===id):null;
+  b.innerHTML=`<div class="admin-editor">
+    <div class="admin-toolbar"><h3>${m?'Edit Mission':'Add Mission'}</h3><button class="btn ghost compact" id="missionBack">← Back</button></div>
+    <div class="form-group"><label>Mission title</label><input id="mTitle" value="${esc(m?.title||'')}" placeholder="Talk to someone new"></div>
+    <div class="form-group"><label>Description</label><textarea id="mDesc" placeholder="What should participants do?">${esc(m?.description||'')}</textarea></div>
+    <div class="admin-form-grid">
+      <div class="form-group"><label>Category</label><select id="mCat">${['Connect','Contribute','Stretch'].map(c=>`<option ${m?.category===c?'selected':''}>${c}</option>`).join('')}</select></div>
+      <div class="form-group"><label>Points</label><input id="mPoints" type="number" min="0" value="${m?.points??20}"></div>
+    </div>
+    <label class="admin-check"><input id="mApproval" type="checkbox" ${m?.requiresApproval?'checked':''}> Requires admin approval</label>
+    <label class="admin-check"><input id="mActive" type="checkbox" ${m?.isActive===false?'':'checked'}> Active / visible to participants</label>
+    <div class="admin-form-grid">
+      <div class="form-group"><label>Active from (optional)</label><input id="mFrom" type="datetime-local" value="${m?.activeFrom?new Date(m.activeFrom).toISOString().slice(0,16):''}"></div>
+      <div class="form-group"><label>Active until (optional)</label><input id="mUntil" type="datetime-local" value="${m?.activeUntil?new Date(m.activeUntil).toISOString().slice(0,16):''}"></div>
+    </div>
+    <button class="btn pink full" id="mSave">${m?'Save Changes':'Add Mission'}</button>
+  </div>`;
+  $('#missionBack').onclick=renderMissionAdmin;
+  $('#mSave').onclick=async()=>{
+    const payload={
+      title:$('#mTitle').value.trim(),
+      description:$('#mDesc').value.trim(),
+      category:$('#mCat').value,
+      points:Math.max(0,+$('#mPoints').value||0),
+      requiresApproval:$('#mApproval').checked,
+      isActive:$('#mActive').checked,
+      activeFrom:$('#mFrom').value?new Date($('#mFrom').value).toISOString():null,
+      activeUntil:$('#mUntil').value?new Date($('#mUntil').value).toISOString():null
+    };
+    if(!payload.title)return alert('Enter a mission title.');
+    if(payload.activeFrom&&payload.activeUntil&&new Date(payload.activeUntil)<new Date(payload.activeFrom))return alert('Active until must be after Active from.');
+    try{
+      if(backendMode==='supabase'){
+        if(m)await MayoCloud.updateMission(m.id,payload);else await MayoCloud.createMission(payload);
+        await refreshCloudState({renderPage:false});
+      }else{
+        if(m)Object.assign(m,payload);else state.missions.push({id:'m'+Date.now(),...payload,icon:'⭐',done:false});
+        save();
+      }
+      renderMissionAdmin();
+    }catch(e){showError(e)}
+  };
+}
+function renderTeamAdmin(){
+  const b=$('#adminBody');
+  const teams=[...(state.teams||[])].sort((a,b)=>a.name.localeCompare(b.name));
+  b.innerHTML=`<div class="admin-toolbar"><div><h3>Teams</h3><p class="muted">Create teams, rename them, and move participants at any time.</p></div></div>
+    <div class="admin-inline-create"><input id="newTeamName" placeholder="New team name"><button class="btn pink compact" id="addTeamBtn">+ Create Team</button></div>
+    <div class="admin-team-summary">${teams.map(t=>{const members=state.people.filter(p=>p.teamId===t.id);return `<div class="admin-team-card"><div><b>${esc(t.name)}</b><small>${members.length} participant${members.length===1?'':'s'}</small></div><div><button class="btn ghost compact" data-rename-team="${t.id}">Rename</button><button class="btn ghost compact" data-delete-team="${t.id}" ${members.length?'disabled':''}>Delete</button></div></div>`}).join('')||'<div class="empty">No teams yet.</div>'}</div>
+    <h3 class="admin-subhead">Participant Assignments</h3>
+    <div class="admin-list">${state.people.map(p=>`<div class="admin-person-row"><div><b>${esc(p.name)}</b><small>${esc(p.org||'')}</small></div><select data-team-person="${p.id}"><option value="">Unassigned</option>${teams.map(t=>`<option value="${t.id}" ${p.teamId===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>`).join('')}</div>`;
+  $('#addTeamBtn').onclick=async()=>{
+    const name=$('#newTeamName').value.trim();if(!name)return alert('Enter a team name.');
+    try{
+      if(backendMode==='supabase'){await MayoCloud.createTeam(name);await refreshCloudState({renderPage:false});}
+      else{state.teams=state.teams||[];state.teams.push({id:'t'+Date.now(),name});save();}
+      renderTeamAdmin();
+    }catch(e){showError(e)}
+  };
+  $$('[data-rename-team]').forEach(btn=>btn.onclick=async()=>{
+    const t=(state.teams||[]).find(x=>x.id===btn.dataset.renameTeam);if(!t)return;
+    const name=prompt('New team name',t.name)?.trim();if(!name||name===t.name)return;
+    try{
+      if(backendMode==='supabase'){await MayoCloud.renameTeam(t.id,name);await refreshCloudState({renderPage:false});}
+      else{t.name=name;state.people.filter(p=>p.teamId===t.id).forEach(p=>p.team=name);save();}
+      renderTeamAdmin();
+    }catch(e){showError(e)}
+  });
+  $$('[data-delete-team]').forEach(btn=>btn.onclick=async()=>{
+    const t=(state.teams||[]).find(x=>x.id===btn.dataset.deleteTeam);if(!t||btn.disabled)return;
+    if(!confirm(`Delete empty team "${t.name}"?`))return;
+    try{
+      if(backendMode==='supabase'){await MayoCloud.deleteTeam(t.id);await refreshCloudState({renderPage:false});}
+      else{state.teams=state.teams.filter(x=>x.id!==t.id);save();}
+      renderTeamAdmin();
+    }catch(e){showError(e)}
+  });
+  $$('[data-team-person]').forEach(sel=>sel.onchange=async()=>{
+    const profileId=sel.dataset.teamPerson,teamId=sel.value||null;
+    sel.disabled=true;
+    try{
+      if(backendMode==='supabase'){await MayoCloud.setParticipantTeam(profileId,teamId);await refreshCloudState({renderPage:false});}
+      else{
+        const p=state.people.find(x=>x.id===profileId),t=(state.teams||[]).find(x=>x.id===teamId);
+        if(p){p.teamId=teamId;p.team=t?.name||'';}save();
+      }
+      renderTeamAdmin();
+    }catch(e){sel.disabled=false;showError(e)}
+  });
+}
+function renderScheduleAdmin(){
+  const b=$('#adminBody');
+  const events=[...(state.schedule||[])].sort((a,b)=>new Date(a.startsAt||0)-new Date(b.startsAt||0));
+  b.innerHTML=`<div class="admin-toolbar"><div><h3>Schedule</h3><p class="muted">Edit program content without changing GitHub files.</p></div><button class="btn pink compact" id="adminAddEvent">+ Add Event</button></div>
+    <div class="admin-list schedule-admin-list">${events.map(e=>`<article class="admin-row">
+      <div class="admin-row-main"><div class="admin-row-title"><b>${esc(e.title)}</b></div><div class="admin-meta"><span>${esc(e.date||'')}</span><span>${esc(e.time||'')}</span></div><div class="admin-desc">${esc(e.location||'No location')}</div></div>
+      <div class="admin-row-actions"><button class="btn ghost compact" data-edit-event="${e.id}">Edit</button><button class="btn ghost compact danger-lite" data-delete-event="${e.id}">Delete</button></div>
+    </article>`).join('')||'<div class="empty">No schedule events.</div>'}</div>`;
+  $('#adminAddEvent').onclick=()=>renderScheduleEditor(null);
+  $$('[data-edit-event]').forEach(x=>x.onclick=()=>renderScheduleEditor(x.dataset.editEvent));
+  $$('[data-delete-event]').forEach(x=>x.onclick=async()=>{
+    const e=state.schedule.find(y=>y.id===x.dataset.deleteEvent);if(!e)return;
+    if(!confirm(`Delete "${e.title}"? This will also remove participant bookmarks for this event.`))return;
+    try{
+      if(backendMode==='supabase'){await MayoCloud.deleteSchedule(e.id);await refreshCloudState({renderPage:false});}
+      else{state.schedule=state.schedule.filter(y=>y.id!==e.id);save();}
+      renderScheduleAdmin();
+    }catch(err){showError(err)}
+  });
+}
+function renderScheduleEditor(id){
+  const b=$('#adminBody'),e=id?state.schedule.find(x=>x.id===id):null;
+  const tz=e?.timeZone||'America/Chicago';
+  b.innerHTML=`<div class="admin-editor">
+    <div class="admin-toolbar"><h3>${e?'Edit Event':'Add Event'}</h3><button class="btn ghost compact" id="eventBack">← Back</button></div>
+    <div class="form-group"><label>Event title</label><input id="eTitle" value="${esc(e?.title||'')}"></div>
+    <div class="form-group"><label>Time zone</label><select id="eZone"><option value="America/Chicago" ${tz==='America/Chicago'?'selected':''}>Rochester — Central Time</option><option value="America/Phoenix" ${tz==='America/Phoenix'?'selected':''}>Phoenix — Arizona Time</option><option value="America/New_York" ${tz==='America/New_York'?'selected':''}>Eastern Time</option></select></div>
+    <div class="admin-form-grid">
+      <div class="form-group"><label>Start</label><input id="eStart" type="datetime-local" value="${e?.startsAt?isoToInputInZone(e.startsAt,tz):''}"></div>
+      <div class="form-group"><label>End</label><input id="eEnd" type="datetime-local" value="${e?.endsAt?isoToInputInZone(e.endsAt,tz):''}"></div>
+    </div>
+    <div class="form-group"><label>Location</label><input id="eLocation" value="${esc(e?.location||'')}" placeholder="Two Discovery Square, Rochester, MN"></div>
+    <div class="form-group"><label>Map URL (optional)</label><input id="eMap" value="${esc(e?.locationUrl||'')}" placeholder="https://..."></div>
+    <div class="form-group"><label>Description / Speaker / Address</label><textarea id="eDesc" placeholder="Speaker / Host: ...&#10;Address: ...">${esc(e?.details||'')}</textarea></div>
+    <button class="btn pink full" id="eSave">${e?'Save Changes':'Add Event'}</button>
+  </div>`;
+  $('#eventBack').onclick=renderScheduleAdmin;
+  $('#eSave').onclick=async()=>{
+    const zone=$('#eZone').value,start=$('#eStart').value,end=$('#eEnd').value;
+    const payload={
+      title:$('#eTitle').value.trim(),
+      startsAt:localInputToIso(start,zone),
+      endsAt:end?localInputToIso(end,zone):null,
+      timeZone:zone,
+      location:$('#eLocation').value.trim(),
+      locationUrl:$('#eMap').value.trim(),
+      description:$('#eDesc').value.trim()
+    };
+    if(!payload.title||!payload.startsAt)return alert('Enter an event title and start time.');
+    if(payload.endsAt&&new Date(payload.endsAt)<new Date(payload.startsAt))return alert('End time must be after start time.');
+    try{
+      if(backendMode==='supabase'){
+        if(e)await MayoCloud.updateSchedule(e.id,payload);else await MayoCloud.createSchedule(payload);
+        await refreshCloudState({renderPage:false});
+      }else{
+        if(e)Object.assign(e,{...payload,details:payload.description,locationUrl:payload.locationUrl});else state.schedule.push({id:'e'+Date.now(),...payload,details:payload.description,date:'Program Day',time:start});
+        save();
+      }
+      renderScheduleAdmin();
+    }catch(err){showError(err)}
+  };
 }
 
 async function showAccount(){if(backendMode==='local'){state.role=state.role==='admin'?'participant':'admin';save();render();return;}openModal(`<h2 id="modalTitle">My Account</h2><p><b>${esc(currentUser().name)}</b><br>${esc(MayoCloud.session?.user?.email||'')}</p><p><span class="pill">${esc(state.role)}</span> <span class="pill green">Cloud Beta</span></p><button class="btn ghost full" id="accountEdit">Edit Profile</button><div class="spacer"></div><button class="btn ghost full" id="accountSignOut">Sign Out</button>`);$('#accountEdit').onclick=editMyProfile;$('#accountSignOut').onclick=async()=>{await MayoCloud.signOut();closeModal();renderLogin();};}
