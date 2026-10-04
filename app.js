@@ -45,6 +45,14 @@ let cloudRefreshing=false;
 let cloudRefreshPromise=null;
 let signInFlowActive=false;
 
+// Preserve the participant's Schedule view when the app re-renders after
+// backgrounding, realtime updates, or an auth token refresh.
+const scheduleTabKey='mayo2026ScheduleTab';
+const scheduleScrollKey='mayo2026ScheduleScrollY';
+let scheduleTab=sessionStorage.getItem(scheduleTabKey)||'today';
+let scheduleScrollY=Number(sessionStorage.getItem(scheduleScrollKey)||0);
+if(!['today','full','mine'].includes(scheduleTab))scheduleTab='today';
+
 const recoveryModeKey='mayo2026PasswordRecoveryMode';
 function urlHasRecoveryMarker(){
   const raw=(window.location.search+' '+window.location.hash).toLowerCase();
@@ -339,29 +347,88 @@ function renderHome(){
 function quick(r,i,l){return `<button class="quick-button" data-go="${r}"><span>${i}</span><b>${l}</b></button>`}
 function missionCard(m){return `<div class="card mission-row ${m.done?'completed':''}" data-mission="${m.id}"><div class="icon-box">${m.icon||'⭐'}</div><div><h4>${esc(m.title)}</h4><span class="pill ${m.category==='Stretch'?'orange':m.category==='Contribute'?'green':'pink'}">${esc(m.category)}</span>${m.status==='pending'?'<span class="pill orange" style="margin-left:5px">Pending</span>':''}</div><div class="points">+${m.points}</div></div>`}
 
+
+function eventMapUrl(e){
+  if(e?.locationUrl)return e.locationUrl;
+  const details=String(e?.details||'');
+  const addressMatch=details.match(/(?:^|\n|\.\s+)Address:\s*([^\n]+)/i);
+  const query=(addressMatch?.[1]||e?.location||'').trim();
+  if(!query)return '';
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+function dateKeyInZone(value,timeZone){
+  if(!value)return '';
+  const d=value instanceof Date?value:new Date(value);
+  const fmt=new Intl.DateTimeFormat('en-US',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:timeZone||undefined});
+  const parts=Object.fromEntries(fmt.formatToParts(d).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+function eventEnded(e,now=Date.now()){
+  if(!e?.startsAt)return false;
+  const start=new Date(e.startsAt).getTime();
+  const end=e.endsAt?new Date(e.endsAt).getTime():start+(60*60*1000);
+  return end<=now;
+}
+function scheduleDescriptionHtml(e){
+  const raw=String(e?.details||'').trim();
+  if(!raw)return '';
+  let about=raw, speaker='', address='';
+  const speakerMatch=about.match(/(?:^|\n|\s)Speaker(?:\(s\))?\s*\/\s*Host:\s*([\s\S]*?)(?=(?:\n|\s)Address:|$)/i);
+  if(speakerMatch){speaker=speakerMatch[1].trim();about=about.replace(speakerMatch[0],' ').trim();}
+  const addressMatch=about.match(/(?:^|\n|\s)Address:\s*([\s\S]*?)$/i);
+  if(addressMatch){address=addressMatch[1].trim();about=about.replace(addressMatch[0],' ').trim();}
+  about=about.replace(/\s{2,}/g,' ').trim();
+  const rows=[];
+  if(about)rows.push(`<div class="schedule-info-row"><span class="schedule-info-label about">About</span><span>${esc(about)}</span></div>`);
+  if(speaker)rows.push(`<div class="schedule-info-row"><span class="schedule-info-label speaker">Speaker / Host</span><span>${esc(speaker)}</span></div>`);
+  if(address)rows.push(`<div class="schedule-info-row"><span class="schedule-info-label address">Address</span><span>${esc(address)}</span></div>`);
+  return rows.length?`<div class="schedule-info">${rows.join('')}</div>`:`<p class="detail-description">${esc(raw)}</p>`;
+}
+function rememberSchedulePosition(){
+  if(route!=='schedule')return;
+  scheduleScrollY=window.scrollY||0;
+  sessionStorage.setItem(scheduleScrollKey,String(scheduleScrollY));
+}
+window.addEventListener('scroll',()=>{if(route==='schedule')rememberSchedulePosition()},{passive:true});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)rememberSchedulePosition();});
+
 function renderSchedule(){
   setTitle('Schedule');
-  $('#view').innerHTML=`<div class="tabs"><button class="tab active" data-stab="today">Today</button><button class="tab" data-stab="full">Full Program</button><button class="tab" data-stab="mine">My Schedule</button></div><div id="scheduleBody"></div>`;
-  $$('[data-stab]').forEach(b=>b.onclick=()=>{$$('[data-stab]').forEach(x=>x.classList.toggle('active',x===b));renderScheduleList(b.dataset.stab)});
-  renderScheduleList('today');
+  $('#view').innerHTML=`<div class="tabs"><button class="tab ${scheduleTab==='today'?'active':''}" data-stab="today">Today</button><button class="tab ${scheduleTab==='full'?'active':''}" data-stab="full">Full Program</button><button class="tab ${scheduleTab==='mine'?'active':''}" data-stab="mine">My Schedule</button></div><div id="scheduleBody"></div>`;
+  $$('[data-stab]').forEach(b=>b.onclick=()=>{
+    scheduleTab=b.dataset.stab;
+    sessionStorage.setItem(scheduleTabKey,scheduleTab);
+    scheduleScrollY=0;sessionStorage.setItem(scheduleScrollKey,'0');
+    $$('[data-stab]').forEach(x=>x.classList.toggle('active',x===b));
+    renderScheduleList(scheduleTab);
+    window.scrollTo({top:0,behavior:'auto'});
+  });
+  renderScheduleList(scheduleTab);
+  requestAnimationFrame(()=>{if(route==='schedule'&&scheduleScrollY>0)window.scrollTo({top:scheduleScrollY,behavior:'auto'});});
 }
 function renderScheduleList(tab){
   const body=$('#scheduleBody');if(!body)return;
   const bookmarks=new Set(state.bookmarkedEventIds||[]);
-  let list=[...state.schedule];let heading='Full Program';
+  let list=[...state.schedule];let heading='Full Program';let emptyMessage='No events in this view.';
   if(tab==='mine'){list=list.filter(e=>bookmarks.has(e.id));heading='My Schedule';}
   if(tab==='today'){
-    const today=new Date();
-    const sameDay=e=>e.startsAt&&new Date(e.startsAt).toDateString()===today.toDateString();
-    let todayList=list.filter(sameDay);
-    if(todayList.length){list=todayList;heading='Today';}
-    else {
-      const future=list.filter(e=>e.startsAt&&new Date(e.startsAt)>=today).sort((a,b)=>new Date(a.startsAt)-new Date(b.startsAt));
-      if(future.length){const d=new Date(future[0].startsAt).toDateString();list=future.filter(e=>new Date(e.startsAt).toDateString()===d);heading=`Next program day · ${list[0].date}`;}
-      else {list=[];heading='Today';}
+    const now=new Date();
+    const allToday=list.filter(e=>e.startsAt&&dateKeyInZone(e.startsAt,e.timeZone)===dateKeyInZone(now,e.timeZone));
+    if(allToday.length){
+      list=allToday.filter(e=>!eventEnded(e,now.getTime()));
+      heading='Today';
+      if(!list.length)emptyMessage="Today's program is complete.";
+    }else{
+      const future=list.filter(e=>e.startsAt&&new Date(e.startsAt)>now).sort((a,b)=>new Date(a.startsAt)-new Date(b.startsAt));
+      if(future.length){
+        const first=future[0];
+        const key=dateKeyInZone(first.startsAt,first.timeZone);
+        list=future.filter(e=>dateKeyInZone(e.startsAt,e.timeZone)===key);
+        heading=`Next program day · ${first.date}`;
+      }else {list=[];heading='Today';emptyMessage='No upcoming program events.';}
     }
   }
-  body.innerHTML=`<div class="section-head"><h3>${esc(heading)}</h3><span class="pill">${list.length} events</span></div><div class="detail-list">${list.map(e=>scheduleDetailCard(e,bookmarks.has(e.id))).join('')||'<div class="empty">No events in this view.</div>'}</div>`;
+  body.innerHTML=`<div class="section-head"><h3>${esc(heading)}</h3><span class="pill">${list.length} events</span></div><div class="detail-list">${list.map(e=>scheduleDetailCard(e,bookmarks.has(e.id))).join('')||`<div class="empty">${esc(emptyMessage)}</div>`}</div>`;
   $$('[data-schedule-toggle]').forEach(btn=>btn.onclick=async()=>{
     const id=btn.dataset.scheduleToggle;
     const saved=(state.bookmarkedEventIds||[]).includes(id);
@@ -373,19 +440,20 @@ function renderScheduleList(tab){
     }catch(err){showError(err);btn.disabled=false;btn.textContent=previous;}
   });
   $$('[data-calendar-event]').forEach(btn=>btn.onclick=()=>{const e=state.schedule.find(x=>x.id===btn.dataset.calendarEvent);if(e)downloadCalendarEvent(e);});
-  $$('[data-map-event]').forEach(btn=>btn.onclick=()=>{const e=state.schedule.find(x=>x.id===btn.dataset.mapEvent);if(e?.locationUrl)window.open(e.locationUrl,'_blank');});
+  $$('[data-map-event]').forEach(btn=>btn.onclick=()=>{const e=state.schedule.find(x=>x.id===btn.dataset.mapEvent);const url=eventMapUrl(e);if(url)window.open(url,'_blank');});
   $$('[data-attachment-event]').forEach(btn=>btn.onclick=()=>{const e=state.schedule.find(x=>x.id===btn.dataset.attachmentEvent);if(e?.attachmentUrl)window.open(e.attachmentUrl,'_blank');});
 }
 function scheduleDetailCard(e,saved){
-  const mapButton=e.locationUrl?`<button class="btn ghost compact" data-map-event="${e.id}">Open Map</button>`:'';
+  const mapUrl=eventMapUrl(e);
+  const mapButton=`<button class="btn ghost compact" data-map-event="${e.id}" ${mapUrl?'':'disabled'}>Open Map</button>`;
   const attachment=e.attachmentUrl?`<button class="btn ghost compact" data-attachment-event="${e.id}">Open File</button>`:'';
   return `<article class="card detail-card schedule-detail-card">
     <div class="detail-main">
       <div class="detail-meta"><span class="pill">${esc(e.date||'Program')}</span><span class="time">${esc(e.time||'TBD')}</span></div>
       <h3>${esc(e.title)}</h3>
       ${e.location?`<p class="detail-location">📍 ${esc(e.location)}</p>`:''}
-      ${e.details?`<p class="detail-description">${esc(e.details)}</p>`:''}
-      ${(mapButton||attachment)?`<div class="inline-actions">${mapButton}${attachment}</div>`:''}
+      ${scheduleDescriptionHtml(e)}
+      <div class="inline-actions">${mapButton}${attachment}</div>
     </div>
     <div class="detail-actions">
       <button class="btn ghost" data-schedule-toggle="${e.id}">${saved?'★ Remove from My Schedule':'☆ Add to My Schedule'}</button>
@@ -553,7 +621,12 @@ $('#modalClose').onclick=closeModal;$('#modal').onclick=e=>{if(e.target.id==='mo
 $('#roleBadge').onclick=showAccount;
 window.addEventListener('mayo-auth-changed',async(e)=>{
   if(backendMode!=='supabase')return;
-  if(e?.detail?.event==='PASSWORD_RECOVERY') enterRecoveryMode();
+  const authEvent=e?.detail?.event;
+  // Supabase may refresh the access token after the tab/browser has been in the
+  // background. A token refresh does not require a page re-render and should not
+  // reset the participant's current Schedule view.
+  if(authEvent==='TOKEN_REFRESHED')return;
+  if(authEvent==='PASSWORD_RECOVERY') enterRecoveryMode();
   if(recoveryModeActive()){renderPasswordRecovery();return;}
   if(signInFlowActive && e?.detail?.event==='SIGNED_IN')return;
   try{

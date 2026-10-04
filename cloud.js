@@ -28,19 +28,26 @@
   }
   const wantsCloud = () => cfg().dataMode === 'supabase' || (cfg().dataMode === 'auto' && configured());
 
-  function formatDateTime(iso) {
+  function formatDateTime(iso,timeZone='') {
     if (!iso) return {date:'',time:''};
     const d = new Date(iso);
-    const date = new Intl.DateTimeFormat('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}).format(d);
-    const time = new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(d);
+    const zoneOpts=timeZone?{timeZone}:{};
+    const date = new Intl.DateTimeFormat('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',...zoneOpts}).format(d);
+    const time = new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit',...zoneOpts}).format(d);
     return {date,time};
   }
-  function formatRange(start,end) {
+  function formatRange(start,end,timeZone='') {
     if (!start) return '';
     const s = new Date(start);
     const e = end ? new Date(end) : null;
-    const fmt = x => new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(x);
-    return e ? `${fmt(s)} – ${fmt(e)}` : fmt(s);
+    const zoneOpts=timeZone?{timeZone}:{};
+    const fmt = x => new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit',...zoneOpts}).format(x);
+    let zone='';
+    try{
+      zone=new Intl.DateTimeFormat('en-US',{timeZone:timeZone||undefined,timeZoneName:'short'}).formatToParts(s).find(p=>p.type==='timeZoneName')?.value||'';
+    }catch(_e){}
+    const range=e ? `${fmt(s)} – ${fmt(e)}` : fmt(s);
+    return zone?`${range} ${zone}`:range;
   }
   function messageTime(iso) {
     if (!iso) return '';
@@ -152,8 +159,9 @@
     const me=people.find(p=>p.id===uid);
     const completed=new Map((completionsR.data||[]).map(c=>[c.mission_id,c.status]));
     const schedule=(scheduleR.data||[]).map(e=>{
-      const dt=formatDateTime(e.starts_at);
-      return {id:e.id,date:dt.date,time:formatRange(e.starts_at,e.ends_at),title:e.title,location:e.location||'',locationUrl:e.location_url||'',type:'session',details:e.description||'',attachmentUrl:e.attachment_url||'',startsAt:e.starts_at,endsAt:e.ends_at};
+      const timeZone=e.time_zone||'';
+      const dt=formatDateTime(e.starts_at,timeZone);
+      return {id:e.id,date:dt.date,time:formatRange(e.starts_at,e.ends_at,timeZone),timeZone,title:e.title,location:e.location||'',locationUrl:e.location_url||'',type:'session',details:e.description||'',attachmentUrl:e.attachment_url||'',startsAt:e.starts_at,endsAt:e.ends_at};
     });
     const missions=(missionsR.data||[]).map(m=>({id:m.id,title:m.title,description:m.description||'',category:m.category,points:m.points,icon:m.category==='Connect'?'👥':m.category==='Stretch'?'🙋':m.category==='Contribute'?'🤝':'⭐',done:completed.get(m.id)==='approved',status:completed.get(m.id)||null,requiresApproval:m.requires_admin_approval}));
     const points={};
@@ -245,8 +253,8 @@
   async function votePoll(pollId,optionId) {
     const {error}=await client.from('poll_votes').upsert({poll_id:pollId,option_id:optionId,profile_id:session.user.id},{onConflict:'poll_id,profile_id'}); if(error) throw error;
   }
-  async function createSchedule({title,startsAt,endsAt,location,description}) {
-    const {error}=await client.from('schedule_events').insert({title,starts_at:startsAt,ends_at:endsAt||null,location,description:description||'',created_by:session.user.id}); if(error) throw error;
+  async function createSchedule({title,startsAt,endsAt,location,description,timeZone}) {
+    const {error}=await client.from('schedule_events').insert({title,starts_at:startsAt,ends_at:endsAt||null,location,description:description||'',time_zone:timeZone||null,created_by:session.user.id}); if(error) throw error;
   }
   async function updateProfile({fullName,organization,title,interests,bio}) {
     const {error}=await client.from('profiles').update({full_name:fullName,organization,title,interests,bio}).eq('id',session.user.id);
