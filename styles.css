@@ -238,3 +238,15 @@ button{cursor:pointer}
     max-width:250px!important;
   }
 }
+
+
+/* v6.10 restore original program theme in Home hero */
+.hero-message strong{
+  font-size:16px;
+  font-weight:850;
+  letter-spacing:.01em;
+}
+.hero-message span{
+  opacity:.94;
+  font-weight:650;
+}
