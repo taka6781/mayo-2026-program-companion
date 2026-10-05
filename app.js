@@ -491,7 +491,6 @@ function renderScheduleList(tab){
       renderScheduleList(tab);
     }catch(err){showError(err);btn.disabled=false;btn.textContent=previous;}
   });
-  $$('[data-calendar-event]').forEach(btn=>btn.onclick=()=>{const e=state.schedule.find(x=>x.id===btn.dataset.calendarEvent);if(e)downloadCalendarEvent(e);});
   $$('[data-map-event]').forEach(btn=>btn.onclick=()=>{const e=state.schedule.find(x=>x.id===btn.dataset.mapEvent);const url=eventMapUrl(e);if(url)window.open(url,'_blank');});
   $$('[data-attachment-event]').forEach(btn=>btn.onclick=()=>{const e=state.schedule.find(x=>x.id===btn.dataset.attachmentEvent);if(e?.attachmentUrl)window.open(e.attachmentUrl,'_blank');});
 }
@@ -509,7 +508,6 @@ function scheduleDetailCard(e,saved){
       <button class="btn pink" data-map-event="${e.id}" ${mapUrl?'':'disabled'}>Open Map</button>
       ${attachment}
       <button class="btn pink" data-schedule-toggle="${e.id}">${saved?'★ Remove from My Schedule':'☆ Add to My Schedule'}</button>
-      <button class="btn pink" data-calendar-event="${e.id}" ${e.startsAt?'':'disabled'}>Add to My Calendar</button>
     </div>
   </article>`;
 }
@@ -523,9 +521,8 @@ function downloadCalendarEvent(e){
 }
 function showEvent(id){
   const e=state.schedule.find(x=>x.id===id);if(!e)return;const saved=(state.bookmarkedEventIds||[]).includes(id);const mapButton=e.locationUrl?`<button class="btn ghost full" id="openMap">Open Map</button><div class="spacer"></div>`:'';
-  openModal(`<h2 id="modalTitle">${esc(e.title)}</h2><span class="pill">${esc(e.date)}</span><p><b>${esc(e.time)}</b></p><p>📍 ${esc(e.location)}</p><div class="card notice"><b>About</b><p>${esc(e.details)}</p></div><div class="spacer"></div>${mapButton}<button class="btn ghost full" id="bookmarkEvent">${saved?'★ Remove from My Schedule':'☆ Add to My Schedule'}</button><div class="spacer"></div><button class="btn full" id="calendarBtn">Add to My Calendar</button>`);
+  openModal(`<h2 id="modalTitle">${esc(e.title)}</h2><span class="pill">${esc(e.date)}</span><p><b>${esc(e.time)}</b></p><p>📍 ${esc(e.location)}</p><div class="card notice"><b>About</b><p>${esc(e.details)}</p></div><div class="spacer"></div>${mapButton}<button class="btn ghost full" id="bookmarkEvent">${saved?'★ Remove from My Schedule':'☆ Add to My Schedule'}</button>`);
   if($('#openMap'))$('#openMap').onclick=()=>window.open(e.locationUrl,'_blank');
-  $('#calendarBtn').onclick=()=>downloadCalendarEvent(e);
   $('#bookmarkEvent').onclick=async()=>{try{if(backendMode==='supabase'){await MayoCloud.toggleScheduleBookmark(id,saved);await refreshCloudState({renderPage:false});}else{state.bookmarkedEventIds=state.bookmarkedEventIds||[];state.bookmarkedEventIds=saved?state.bookmarkedEventIds.filter(x=>x!==id):[...state.bookmarkedEventIds,id];save();}closeModal();renderSchedule();}catch(err){showError(err)}};
 }
 function renderChallenge(){setTitle('Challenge');$('#view').innerHTML=`<div class="tabs"><button class="tab active" data-ctab="missions">Missions</button><button class="tab" data-ctab="points">My Points</button><button class="tab" data-ctab="leaderboard">Leaderboard</button></div><div id="challengeBody"></div>`;$$('[data-ctab]').forEach(b=>b.onclick=()=>{$$('[data-ctab]').forEach(x=>x.classList.toggle('active',x===b));renderChallengeTab(b.dataset.ctab)});renderChallengeTab('missions');}
