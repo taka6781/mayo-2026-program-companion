@@ -776,6 +776,7 @@ function renderAnnouncementAdmin(){
       <div class="admin-row-actions">
         <button class="btn ghost compact" data-edit-announcement="${a.id}">Edit</button>
         <button class="btn ${a.isActive===false?'pink':'ghost'} compact" data-toggle-announcement="${a.id}">${a.isActive===false?'Restore':'Archive'}</button>
+        <button class="btn ghost compact danger-lite" data-delete-announcement="${a.id}">Delete</button>
       </div>
     </article>`).join('')||'<div class="empty">No announcements yet.</div>'}</div>`;
   $('#adminAddAnnouncement').onclick=()=>renderAnnouncementEditor(null);
@@ -785,6 +786,20 @@ function renderAnnouncementAdmin(){
     try{
       if(backendMode==='supabase'){await MayoCloud.setAnnouncementActive(a.id,a.isActive===false);await refreshCloudState({renderPage:false});}
       else{a.isActive=a.isActive===false;save();}
+      renderAnnouncementAdmin();
+    }catch(e){showError(e)}
+  });
+  $$('[data-delete-announcement]').forEach(x=>x.onclick=async()=>{
+    const a=(state.messages?.announcements||[]).find(y=>y.id===x.dataset.deleteAnnouncement);if(!a)return;
+    if(!confirm(`Permanently delete announcement "${a.title}"? Read-status records will also be removed. This cannot be undone.`))return;
+    try{
+      if(backendMode==='supabase'){
+        await MayoCloud.deleteAnnouncement(a.id);
+        await refreshCloudState({renderPage:false});
+      }else{
+        state.messages.announcements=(state.messages?.announcements||[]).filter(y=>y.id!==a.id);
+        save();
+      }
       renderAnnouncementAdmin();
     }catch(e){showError(e)}
   });
@@ -833,6 +848,7 @@ function renderPollAdmin(){
           <button class="btn ghost compact" data-edit-poll="${p.id}">Edit</button>
           ${open?`<button class="btn pink compact" data-close-admin-poll="${p.id}">Close & Publish</button>`:`<button class="btn ghost compact" data-reopen-poll="${p.id}">Reopen</button>`}
           <button class="btn ${p.isActive===false?'pink':'ghost'} compact" data-toggle-poll="${p.id}">${p.isActive===false?'Restore':'Archive'}</button>
+          <button class="btn ghost compact danger-lite" data-delete-poll="${p.id}">Delete</button>
         </div>
       </article>`}).join('')||'<div class="empty">No polls yet.</div>'}</div>`;
   $('#adminAddPoll').onclick=()=>renderPollEditor(null);
@@ -848,6 +864,21 @@ function renderPollAdmin(){
   $$('[data-toggle-poll]').forEach(x=>x.onclick=async()=>{
     const p=state.polls.find(y=>y.id===x.dataset.togglePoll);if(!p)return;
     try{if(backendMode==='supabase'){await MayoCloud.setPollActive(p.id,p.isActive===false);await refreshCloudState({renderPage:false});}else{p.isActive=p.isActive===false;save();}renderPollAdmin();}catch(e){showError(e)}
+  });
+  $$('[data-delete-poll]').forEach(x=>x.onclick=async()=>{
+    const p=state.polls.find(y=>y.id===x.dataset.deletePoll);if(!p)return;
+    const votes=pollAdminVoteCount(p);
+    if(!confirm(`Permanently delete this poll${votes?` and its ${votes} vote${votes===1?'':'s'}`:''}? This cannot be undone.`))return;
+    try{
+      if(backendMode==='supabase'){
+        await MayoCloud.deletePoll(p.id);
+        await refreshCloudState({renderPage:false});
+      }else{
+        state.polls=state.polls.filter(y=>y.id!==p.id);
+        save();
+      }
+      renderPollAdmin();
+    }catch(e){showError(e)}
   });
 }
 function renderPollEditor(id){
@@ -987,7 +1018,7 @@ function renderUserEditor(id){
 function renderMissionAdmin(){
   const b=$('#adminBody');
   const missions=[...(state.missions||[])].sort((a,b)=>(a.isActive===b.isActive?0:a.isActive?-1:1)||a.category.localeCompare(b.category)||a.title.localeCompare(b.title));
-  b.innerHTML=`<div class="admin-toolbar"><div><h3>Challenge Missions</h3><p class="muted">Edit points, category, description, approval, and visibility.</p></div><button class="btn pink compact" id="adminAddMission">+ Add Mission</button></div>
+  b.innerHTML=`<div class="admin-toolbar"><div><h3>Challenge Missions</h3><p class="muted">Edit points, category, description, timing, and visibility.</p></div><button class="btn pink compact" id="adminAddMission">+ Add Mission</button></div>
     <div class="admin-list">${missions.map(m=>`<article class="admin-row ${m.isActive===false?'admin-inactive':''}">
       <div class="admin-row-main">
         <div class="admin-row-title"><b>${esc(m.title)}</b><span class="pill ${m.isActive===false?'orange':'green'}">${m.isActive===false?'Inactive':'Active'}</span></div>
@@ -997,6 +1028,7 @@ function renderMissionAdmin(){
       <div class="admin-row-actions">
         <button class="btn ghost compact" data-edit-mission="${m.id}">Edit</button>
         <button class="btn ${m.isActive===false?'pink':'ghost'} compact" data-toggle-mission="${m.id}">${m.isActive===false?'Activate':'Deactivate'}</button>
+        <button class="btn ghost compact danger-lite" data-delete-mission="${m.id}">Delete</button>
       </div>
     </article>`).join('')||'<div class="empty">No missions yet.</div>'}</div>`;
   $('#adminAddMission').onclick=()=>renderMissionEditor(null);
@@ -1006,6 +1038,20 @@ function renderMissionAdmin(){
     try{
       if(backendMode==='supabase'){await MayoCloud.setMissionActive(m.id,m.isActive===false);await refreshCloudState({renderPage:false});}
       else{m.isActive=m.isActive===false;save();}
+      renderMissionAdmin();
+    }catch(e){showError(e)}
+  });
+  $$('[data-delete-mission]').forEach(x=>x.onclick=async()=>{
+    const m=state.missions.find(y=>y.id===x.dataset.deleteMission);if(!m)return;
+    if(!confirm(`Permanently delete "${m.title}"? Completed records and points awarded by this mission will also be removed. This cannot be undone.`))return;
+    try{
+      if(backendMode==='supabase'){
+        await MayoCloud.deleteMission(m.id);
+        await refreshCloudState({renderPage:false});
+      }else{
+        state.missions=state.missions.filter(y=>y.id!==m.id);
+        save();
+      }
       renderMissionAdmin();
     }catch(e){showError(e)}
   });

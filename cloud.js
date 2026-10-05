@@ -287,6 +287,11 @@
     const {error}=await client.from('announcements').update({is_active:!!isActive}).eq('id',id);
     if(error) throw error;
   }
+  async function deleteAnnouncement(id) {
+    const {data,error}=await client.rpc('admin_delete_announcement',{target_announcement:id});
+    if(error) throw error;
+    return data;
+  }
   async function createMission({title,description='',category,points=0,isActive=true,activeFrom=null,activeUntil=null}) {
     const {error}=await client.from('missions').insert({
       title,description,category,points,
@@ -311,6 +316,11 @@
   async function setMissionActive(id,isActive) {
     const {error}=await client.from('missions').update({is_active:!!isActive}).eq('id',id);
     if(error) throw error;
+  }
+  async function deleteMission(id) {
+    const {data,error}=await client.rpc('admin_delete_mission',{target_mission:id});
+    if(error) throw error;
+    return data;
   }
   async function votePoll(pollId,optionId) {
     const {error}=await client.from('poll_votes').upsert({poll_id:pollId,option_id:optionId,profile_id:session.user.id},{onConflict:'poll_id,profile_id'}); if(error) throw error;
@@ -416,6 +426,11 @@
     const {error}=await client.from('polls').update({is_active:!!isActive}).eq('id',pollId);
     if(error) throw error;
   }
+  async function deletePoll(pollId) {
+    const {data,error}=await client.rpc('admin_delete_poll',{target_poll:pollId});
+    if(error) throw error;
+    return data;
+  }
   async function closePoll(pollId) {
     const {error}=await client.from('polls').update({
       is_open:false,results_published:true,closed_at:new Date().toISOString()
@@ -478,7 +493,7 @@
   function getConfig(){ return cfg(); }
 
   window.MayoCloud={
-    configured,wantsCloud,init,sendMagicLink,signInWithPassword,requestPasswordReset,updatePassword,signUpWithPassword,signOut,getSession,loadState,completeMission,undoMission,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,updateAnnouncement,setAnnouncementActive,createMission,updateMission,setMissionActive,createSchedule,updateSchedule,deleteSchedule,createTeam,renameTeam,deleteTeam,setParticipantTeam,applyTeamAssignments,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,updatePoll,setPollActive,closePoll,reopenPoll,votePoll,adminUserRequest,subscribe,
+    configured,wantsCloud,init,sendMagicLink,signInWithPassword,requestPasswordReset,updatePassword,signUpWithPassword,signOut,getSession,loadState,completeMission,undoMission,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,updateAnnouncement,setAnnouncementActive,deleteAnnouncement,createMission,updateMission,setMissionActive,deleteMission,createSchedule,updateSchedule,deleteSchedule,createTeam,renameTeam,deleteTeam,setParticipantTeam,applyTeamAssignments,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,updatePoll,setPollActive,deletePoll,closePoll,reopenPoll,votePoll,adminUserRequest,subscribe,
     saveConfig,clearConfig,getConfig,
     get client(){return client;},get session(){return session;},get lastAuthEvent(){return lastAuthEvent;}
   };
