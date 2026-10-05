@@ -531,11 +531,29 @@ function renderChallengeTab(tab){
   if(tab==='missions'){
     body.innerHTML=`<div class="section-head"><h3>Today’s Missions</h3><span class="pill pink">${state.missions.filter(m=>m.done).length}/${state.missions.length}</span></div><div class="detail-list">${state.missions.map(m=>missionDetailCard(m)).join('')||'<div class="empty">No missions published yet.</div>'}</div>`;
     $$('[data-complete-mission]').forEach(btn=>btn.onclick=async()=>{
-      const id=btn.dataset.completeMission;const m=state.missions.find(x=>x.id===id);if(!m||m.done||m.status==='pending')return;
-      btn.disabled=true;const previous=btn.textContent;btn.textContent='Saving…';
+      const id=btn.dataset.completeMission;const m=state.missions.find(x=>x.id===id);if(!m)return;
+      const undoing=m.done;
+      if(undoing){
+        const message=`Undo completion of "${m.title}"? ${m.points} points will be removed.`;
+        if(!confirm(message))return;
+      }
+      btn.disabled=true;const previous=btn.textContent;btn.textContent=undoing?'Undoing…':'Saving…';
       try{
-        if(backendMode==='supabase'){await MayoCloud.completeMission(id);await refreshCloudState({renderPage:false});renderChallengeTab('missions');}
-        else{m.done=!m.done;state.points[state.currentUserId]=(state.points[state.currentUserId]||0)+(m.done?m.points:-m.points);save();renderChallengeTab('missions');}
+        if(backendMode==='supabase'){
+          if(undoing)await MayoCloud.undoMission(id);else await MayoCloud.completeMission(id);
+          await refreshCloudState({renderPage:false});
+          renderChallengeTab('missions');
+        }else{
+          const wasDone=m.done;
+          if(undoing){
+            m.done=false;m.status=null;
+            if(wasDone)state.points[state.currentUserId]=Math.max(0,(state.points[state.currentUserId]||0)-m.points);
+          }else{
+            m.done=true;m.status='approved';
+            state.points[state.currentUserId]=(state.points[state.currentUserId]||0)+m.points;
+          }
+          save();renderChallengeTab('missions');
+        }
       }catch(e){showError(e);btn.disabled=false;btn.textContent=previous;}
     });
   }
@@ -544,13 +562,12 @@ function renderChallengeTab(tab){
   $$('[data-ltab]').forEach(b=>b.onclick=()=>{$$('[data-ltab]').forEach(x=>x.classList.toggle('active',x===b));$('#leaderboardRows').innerHTML=b.dataset.ltab==='team'?teamLeaderboardRows():individualLeaderboardRows();});
 }
 function missionDetailCard(m){
-  const isPending=m.status==='pending';
-  const label=m.done?'Completed':isPending?'Pending approval':backendMode==='local'?'Complete / Undo':'Complete Mission';
-  const disabled=backendMode==='supabase'&&(m.done||isPending);
+  const label=m.done?'Undo Completion':'Complete Mission';
+  const disabled=false;
   return `<article class="card detail-card mission-detail-card ${m.done?'completed':''}">
     <div class="detail-main">
-      <div class="detail-title-row"><div class="icon-box">${m.icon||'⭐'}</div><div><h3>${esc(m.title)}</h3><div class="inline-actions"><span class="pill ${m.category==='Stretch'?'orange':m.category==='Contribute'?'green':'pink'}">${esc(m.category)}</span><span class="pill green">+${m.points} pts</span>${isPending?'<span class="pill orange">Pending</span>':''}</div></div></div>
-      <p class="detail-description">${esc(m.description||'Complete this mission during the program.')}${m.requiresApproval?' This mission requires admin approval.':''}</p>
+      <div class="detail-title-row"><div class="icon-box">${m.icon||'⭐'}</div><div><h3>${esc(m.title)}</h3><div class="inline-actions"><span class="pill ${m.category==='Stretch'?'orange':m.category==='Contribute'?'green':'pink'}">${esc(m.category)}</span><span class="pill green">+${m.points} pts</span></div></div></div>
+      <p class="detail-description">${esc(m.description||'Complete this mission during the program.')}</p>
     </div>
     <div class="detail-actions">
       <button class="btn ${m.done?'ghost':'pink'}" data-complete-mission="${m.id}" ${disabled?'disabled':''}>${label}</button>
@@ -560,7 +577,28 @@ function missionDetailCard(m){
 function individualLeaderboardRows(){const rows=state.people.map(p=>({p,pts:state.points[p.id]||0})).sort((a,b)=>b.pts-a.pts);return `<table class="score-table">${rows.map((r,i)=>`<tr class="${i===0?'winner':''}"><td>${i+1}. ${esc(r.p.name)}</td><td>${r.pts} pts</td></tr>`).join('')}</table>`}
 function teamLeaderboardRows(){let rows=state.teamLeaderboard||[];if(!rows.length){const map={};state.people.forEach(p=>{if(p.team)map[p.team]=(map[p.team]||0)+(state.points[p.id]||0)});rows=Object.entries(map).map(([name,points])=>({name,points})).sort((a,b)=>b.points-a.points)}return `<table class="score-table">${rows.map((r,i)=>`<tr class="${i===0?'winner':''}"><td>${i+1}. ${esc(r.name)}</td><td>${r.points} pts</td></tr>`).join('')||'<tr><td>No teams yet.</td><td></td></tr>'}</table>`}
 function leaderboardHtml(){return `<div class="tabs"><button class="tab active" data-ltab="individual">Individual</button><button class="tab" data-ltab="team">Team</button></div><div id="leaderboardRows">${individualLeaderboardRows()}</div>`}
-function showMission(id){const m=state.missions.find(x=>x.id===id);if(!m)return;const disabled=backendMode==='supabase'&&(m.done||m.status==='pending');openModal(`<h2 id="modalTitle">${m.icon||'⭐'} ${esc(m.title)}</h2><p><span class="pill">${esc(m.category)}</span> <span class="pill green">+${m.points} pts</span></p><p class="muted">${esc(m.description||'Complete this mission during the program.')}${m.requiresApproval?' This mission requires admin approval.':''}</p><button class="btn ${m.done?'ghost':'pink'} full" id="toggleMission" ${disabled?'disabled':''}>${m.done?'Completed':m.status==='pending'?'Pending approval':backendMode==='local'?'Complete / Undo':'Complete mission'}</button>`);$('#toggleMission').onclick=async()=>{if(backendMode==='supabase'){const btn=$('#toggleMission');btn.disabled=true;btn.textContent='Saving…';try{await MayoCloud.completeMission(id);closeModal();await refreshCloudState();}catch(e){showError(e);btn.disabled=false;btn.textContent='Complete mission';}}else{m.done=!m.done;state.points[state.currentUserId]=(state.points[state.currentUserId]||0)+(m.done?m.points:-m.points);save();closeModal();render();}};}
+function showMission(id){
+  const m=state.missions.find(x=>x.id===id);if(!m)return;
+  openModal(`<h2 id="modalTitle">${m.icon||'⭐'} ${esc(m.title)}</h2>
+    <p><span class="pill">${esc(m.category)}</span> <span class="pill green">+${m.points} pts</span></p>
+    <p class="muted">${esc(m.description||'Complete this mission during the program.')}</p>
+    <button class="btn ${m.done?'ghost':'pink'} full" id="toggleMission">${m.done?'Undo Completion':'Complete Mission'}</button>`);
+  $('#toggleMission').onclick=async()=>{
+    const undoing=m.done;
+    if(undoing&&!confirm(`Undo completion of "${m.title}"? ${m.points} points will be removed.`))return;
+    const btn=$('#toggleMission');btn.disabled=true;btn.textContent=undoing?'Undoing…':'Saving…';
+    try{
+      if(backendMode==='supabase'){
+        if(undoing)await MayoCloud.undoMission(id);else await MayoCloud.completeMission(id);
+        closeModal();await refreshCloudState();
+      }else{
+        m.done=!m.done;m.status=m.done?'approved':null;
+        state.points[state.currentUserId]=Math.max(0,(state.points[state.currentUserId]||0)+(m.done?m.points:-m.points));
+        save();closeModal();render();
+      }
+    }catch(e){showError(e);btn.disabled=false;btn.textContent=undoing?'Undo Completion':'Complete Mission';}
+  };
+}
 
 function renderPeople(){setTitle('People');$('#view').innerHTML=`<div class="tabs"><button class="tab active" data-ptab="all">All Participants</button><button class="tab" data-ptab="team">My Team</button></div><input id="peopleSearch" class="search" placeholder="Search by name, affiliation, or interest…"><div id="peopleList" class="people-grid"></div>`;$('#peopleSearch').oninput=()=>renderPeopleList($('#peopleSearch').value,$('.tab.active')?.dataset.ptab||'all');$$('[data-ptab]').forEach(b=>b.onclick=()=>{$$('[data-ptab]').forEach(x=>x.classList.toggle('active',x===b));renderPeopleList($('#peopleSearch').value,b.dataset.ptab)});renderPeopleList('','all');}
 function renderPeopleList(q,tab){const u=currentUser();q=(q||'').toLowerCase();const list=state.people.filter(p=>p.id!==u.id).filter(p=>tab!=='team'||p.team===u.team).filter(p=>[p.name,p.org,p.title,p.interests,p.bio].join(' ').toLowerCase().includes(q));$('#peopleList').innerHTML=list.map(p=>`<article class="person-card"><div class="person-top"><div class="avatar">${esc(p.initials)}</div><div class="main"><h3>${esc(p.name)}</h3><p class="person-role">${esc(p.org)}${p.title?' • '+esc(p.title):''}</p>${p.team?`<span class="pill">Team ${esc(p.team)}</span>`:''}</div></div>${p.interests?`<div class="person-field"><b>Interests</b><span>${esc(p.interests)}</span></div>`:''}${p.bio?`<div class="person-field"><b>About</b><span>${esc(p.bio)}</span></div>`:''}<div class="person-actions"><button class="btn pink" data-message-person="${p.id}">Message</button><button class="btn ghost" data-kudos-person="${p.id}">Kudo</button></div></article>`).join('')||'<div class="empty">No participants found.</div>';$$('[data-message-person]').forEach(el=>el.onclick=()=>{route='messages';render();openChat('direct',el.dataset.messagePerson)});$$('[data-kudos-person]').forEach(el=>el.onclick=()=>openKudosComposer(el.dataset.kudosPerson));}
@@ -953,7 +991,7 @@ function renderMissionAdmin(){
     <div class="admin-list">${missions.map(m=>`<article class="admin-row ${m.isActive===false?'admin-inactive':''}">
       <div class="admin-row-main">
         <div class="admin-row-title"><b>${esc(m.title)}</b><span class="pill ${m.isActive===false?'orange':'green'}">${m.isActive===false?'Inactive':'Active'}</span></div>
-        <div class="admin-meta"><span>${esc(m.category)}</span><span>${m.points} pts</span>${m.requiresApproval?'<span>Approval required</span>':''}</div>
+        <div class="admin-meta"><span>${esc(m.category)}</span><span>${m.points} pts</span></div>
         ${m.description?`<div class="admin-desc">${esc(m.description)}</div>`:''}
       </div>
       <div class="admin-row-actions">
@@ -982,7 +1020,6 @@ function renderMissionEditor(id){
       <div class="form-group"><label>Category</label><select id="mCat">${['Connect','Contribute','Stretch'].map(c=>`<option ${m?.category===c?'selected':''}>${c}</option>`).join('')}</select></div>
       <div class="form-group"><label>Points</label><input id="mPoints" type="number" min="0" value="${m?.points??20}"></div>
     </div>
-    <label class="admin-check"><input id="mApproval" type="checkbox" ${m?.requiresApproval?'checked':''}> Requires admin approval</label>
     <label class="admin-check"><input id="mActive" type="checkbox" ${m?.isActive===false?'':'checked'}> Active / visible to participants</label>
     <div class="admin-form-grid">
       <div class="form-group"><label>Active from (optional)</label><input id="mFrom" type="datetime-local" value="${m?.activeFrom?new Date(m.activeFrom).toISOString().slice(0,16):''}"></div>
@@ -997,7 +1034,6 @@ function renderMissionEditor(id){
       description:$('#mDesc').value.trim(),
       category:$('#mCat').value,
       points:Math.max(0,+$('#mPoints').value||0),
-      requiresApproval:$('#mApproval').checked,
       isActive:$('#mActive').checked,
       activeFrom:$('#mFrom').value?new Date($('#mFrom').value).toISOString():null,
       activeUntil:$('#mUntil').value?new Date($('#mUntil').value).toISOString():null
@@ -1016,20 +1052,145 @@ function renderMissionEditor(id){
     }catch(e){showError(e)}
   };
 }
+
+let pendingBalancedTeamDraft=null;
+
+function normAttr(v=''){
+  return String(v||'').trim().toLowerCase().replace(/\s+/g,' ');
+}
+function attrTokens(v=''){
+  return [...new Set(normAttr(v).split(/[,\|;/]+|\s{2,}/).map(x=>x.trim()).filter(x=>x.length>=3))];
+}
+function randomShuffle(arr){
+  const a=[...arr];
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+function buildBalancedTeamDraft(){
+  const teams=[...(state.teams||[])];
+  const people=(state.people||[]).filter(p=>p.role!=='admin');
+  if(teams.length<2)throw new Error('Create at least two teams first.');
+  if(!people.length)throw new Error('No participants are available for team assignment.');
+
+  // Exact capacities keep team sizes within one person of each other.
+  const shuffledTeams=randomShuffle(teams);
+  const base=Math.floor(people.length/teams.length);
+  const extra=people.length%teams.length;
+  const buckets=shuffledTeams.map((t,i)=>({
+    team:t,
+    capacity:base+(i<extra?1:0),
+    people:[],
+    orgCount:{},
+    titleCount:{},
+    interests:new Set()
+  }));
+
+  // Put harder-to-place affiliations first, while preserving randomness within ties.
+  const orgFreq={};
+  people.forEach(p=>{const k=normAttr(p.org)||'__none__';orgFreq[k]=(orgFreq[k]||0)+1;});
+  const ordered=randomShuffle(people).sort((a,b)=>
+    (orgFreq[normAttr(b.org)||'__none__']||0)-(orgFreq[normAttr(a.org)||'__none__']||0)
+  );
+
+  for(const p of ordered){
+    const org=normAttr(p.org);
+    const title=normAttr(p.title);
+    const interests=attrTokens(p.interests);
+    const choices=buckets.filter(b=>b.people.length<b.capacity);
+    choices.forEach(b=>{
+      let penalty=0;
+      // Organization is the strongest diversity constraint.
+      if(org)penalty+=(b.orgCount[org]||0)*120;
+      // Exact same title is next strongest.
+      if(title)penalty+=(b.titleCount[title]||0)*30;
+      // Shared stated interests are a softer attribute constraint.
+      interests.forEach(x=>{if(b.interests.has(x))penalty+=8;});
+      // Prefer the less-full bucket when diversity scores are close.
+      penalty+=(b.people.length/Math.max(1,b.capacity))*12;
+      // Small jitter makes repeated "Generate" clicks produce alternative valid drafts.
+      penalty+=Math.random()*3;
+      b._score=penalty;
+    });
+    choices.sort((a,b)=>a._score-b._score);
+    const target=choices[0];
+    target.people.push(p);
+    if(org)target.orgCount[org]=(target.orgCount[org]||0)+1;
+    if(title)target.titleCount[title]=(target.titleCount[title]||0)+1;
+    interests.forEach(x=>target.interests.add(x));
+  }
+
+  return {
+    createdAt:Date.now(),
+    buckets:buckets.map(b=>({team:b.team,people:b.people})),
+    assignments:buckets.flatMap(b=>b.people.map(p=>({profile_id:p.id,team_id:b.team.id})))
+  };
+}
+function teamDraftHtml(draft){
+  if(!draft)return '';
+  return `<div class="team-draft">
+    <div class="team-draft-head"><div><b>Balanced Draft</b><small>Preview only — current teams are unchanged until Confirm is clicked.</small></div><span class="pill pink">${draft.assignments.length} participants</span></div>
+    <div class="team-draft-grid">${draft.buckets.map(b=>`<section class="team-draft-card">
+      <div class="team-draft-title"><b>${esc(b.team.name)}</b><span>${b.people.length}</span></div>
+      ${b.people.map(p=>`<div class="team-draft-person"><b>${esc(p.name)}</b><small>${esc(p.org||'No organization')}${p.title?` · ${esc(p.title)}`:''}</small></div>`).join('')}
+    </section>`).join('')}</div>
+    <div class="team-draft-actions">
+      <button class="btn ghost" id="regenerateBalancedTeams">↻ Generate Another Draft</button>
+      <button class="btn pink" id="confirmBalancedTeams">Confirm Assignment</button>
+    </div>
+  </div>`;
+}
 function renderTeamAdmin(){
   const b=$('#adminBody');
   const teams=[...(state.teams||[])].sort((a,b)=>a.name.localeCompare(b.name));
-  b.innerHTML=`<div class="admin-toolbar"><div><h3>Teams</h3><p class="muted">Create teams, rename them, and move participants at any time.</p></div></div>
+  b.innerHTML=`<div class="admin-toolbar"><div><h3>Teams</h3><p class="muted">Create teams, assign participants manually, or generate a balanced draft automatically.</p></div></div>
+    <div class="team-auto-box">
+      <div><b>Balanced Auto-Assignment</b><p>Distributes all participants evenly while trying to avoid duplicate organization, title, and stated interests in the same team.</p></div>
+      <button class="btn pink" id="generateBalancedTeams" ${teams.length<2?'disabled':''}>Generate Balanced Draft</button>
+    </div>
+    <div id="teamDraftArea">${teamDraftHtml(pendingBalancedTeamDraft)}</div>
     <div class="admin-inline-create"><input id="newTeamName" placeholder="New team name"><button class="btn pink compact" id="addTeamBtn">+ Create Team</button></div>
     <div class="admin-team-summary">${teams.map(t=>{const members=state.people.filter(p=>p.teamId===t.id);return `<div class="admin-team-card"><div><b>${esc(t.name)}</b><small>${members.length} participant${members.length===1?'':'s'}</small></div><div><button class="btn ghost compact" data-rename-team="${t.id}">Rename</button><button class="btn ghost compact" data-delete-team="${t.id}" ${members.length?'disabled':''}>Delete</button></div></div>`}).join('')||'<div class="empty">No teams yet.</div>'}</div>
     <h3 class="admin-subhead">Participant Assignments</h3>
-    <div class="admin-list">${state.people.map(p=>`<div class="admin-person-row"><div><b>${esc(p.name)}</b><small>${esc(p.org||'')}</small></div><select data-team-person="${p.id}"><option value="">Unassigned</option>${teams.map(t=>`<option value="${t.id}" ${p.teamId===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>`).join('')}</div>`;
+    <div class="admin-list">${state.people.filter(p=>p.role!=='admin').map(p=>`<div class="admin-person-row"><div><b>${esc(p.name)}</b><small>${esc(p.org||'')}${p.title?` · ${esc(p.title)}`:''}</small></div><select data-team-person="${p.id}"><option value="">Unassigned</option>${teams.map(t=>`<option value="${t.id}" ${p.teamId===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>`).join('')}</div>`;
+  const wireDraft=()=>{
+    const gen=$('#generateBalancedTeams');
+    if(gen)gen.onclick=()=>{
+      try{pendingBalancedTeamDraft=buildBalancedTeamDraft();renderTeamAdmin();}catch(e){alert(e.message||String(e));}
+    };
+    const regen=$('#regenerateBalancedTeams');
+    if(regen)regen.onclick=()=>{
+      try{pendingBalancedTeamDraft=buildBalancedTeamDraft();renderTeamAdmin();}catch(e){alert(e.message||String(e));}
+    };
+    const confirmBtn=$('#confirmBalancedTeams');
+    if(confirmBtn)confirmBtn.onclick=async()=>{
+      if(!pendingBalancedTeamDraft)return;
+      if(!confirm('Apply this balanced team assignment to all participants?'))return;
+      confirmBtn.disabled=true;confirmBtn.textContent='Applying…';
+      try{
+        if(backendMode==='supabase'){
+          await MayoCloud.applyTeamAssignments(pendingBalancedTeamDraft.assignments);
+          await refreshCloudState({renderPage:false});
+        }else{
+          pendingBalancedTeamDraft.assignments.forEach(a=>{
+            const p=state.people.find(x=>x.id===a.profile_id),t=state.teams.find(x=>x.id===a.team_id);
+            if(p){p.teamId=a.team_id;p.team=t?.name||'';}
+          });save();
+        }
+        pendingBalancedTeamDraft=null;
+        renderTeamAdmin();
+      }catch(e){showError(e);confirmBtn.disabled=false;confirmBtn.textContent='Confirm Assignment';}
+    };
+  };
+  wireDraft();
   $('#addTeamBtn').onclick=async()=>{
     const name=$('#newTeamName').value.trim();if(!name)return alert('Enter a team name.');
     try{
       if(backendMode==='supabase'){await MayoCloud.createTeam(name);await refreshCloudState({renderPage:false});}
       else{state.teams=state.teams||[];state.teams.push({id:'t'+Date.now(),name});save();}
-      renderTeamAdmin();
+      pendingBalancedTeamDraft=null;renderTeamAdmin();
     }catch(e){showError(e)}
   };
   $$('[data-rename-team]').forEach(btn=>btn.onclick=async()=>{
@@ -1038,7 +1199,7 @@ function renderTeamAdmin(){
     try{
       if(backendMode==='supabase'){await MayoCloud.renameTeam(t.id,name);await refreshCloudState({renderPage:false});}
       else{t.name=name;state.people.filter(p=>p.teamId===t.id).forEach(p=>p.team=name);save();}
-      renderTeamAdmin();
+      pendingBalancedTeamDraft=null;renderTeamAdmin();
     }catch(e){showError(e)}
   });
   $$('[data-delete-team]').forEach(btn=>btn.onclick=async()=>{
@@ -1047,7 +1208,7 @@ function renderTeamAdmin(){
     try{
       if(backendMode==='supabase'){await MayoCloud.deleteTeam(t.id);await refreshCloudState({renderPage:false});}
       else{state.teams=state.teams.filter(x=>x.id!==t.id);save();}
-      renderTeamAdmin();
+      pendingBalancedTeamDraft=null;renderTeamAdmin();
     }catch(e){showError(e)}
   });
   $$('[data-team-person]').forEach(sel=>sel.onchange=async()=>{
@@ -1059,10 +1220,11 @@ function renderTeamAdmin(){
         const p=state.people.find(x=>x.id===profileId),t=(state.teams||[]).find(x=>x.id===teamId);
         if(p){p.teamId=teamId;p.team=t?.name||'';}save();
       }
-      renderTeamAdmin();
+      pendingBalancedTeamDraft=null;renderTeamAdmin();
     }catch(e){sel.disabled=false;showError(e)}
   });
 }
+
 function renderScheduleAdmin(){
   const b=$('#adminBody');
   const events=[...(state.schedule||[])].sort((a,b)=>new Date(a.startsAt||0)-new Date(b.startsAt||0));

@@ -250,6 +250,11 @@
     if(error) throw error;
     return data;
   }
+  async function undoMission(missionId) {
+    const {data,error}=await client.rpc('undo_mission_completion',{target_mission:missionId});
+    if(error) throw error;
+    return data;
+  }
   async function sendMessage(type,otherId,text) {
     let convId;
     if(type==='team') {
@@ -282,10 +287,10 @@
     const {error}=await client.from('announcements').update({is_active:!!isActive}).eq('id',id);
     if(error) throw error;
   }
-  async function createMission({title,description='',category,points=0,requiresApproval=false,isActive=true,activeFrom=null,activeUntil=null}) {
+  async function createMission({title,description='',category,points=0,isActive=true,activeFrom=null,activeUntil=null}) {
     const {error}=await client.from('missions').insert({
       title,description,category,points,
-      requires_admin_approval:!!requiresApproval,
+      requires_admin_approval:false,
       is_active:isActive!==false,
       active_from:activeFrom||null,
       active_until:activeUntil||null,
@@ -293,10 +298,10 @@
     });
     if(error) throw error;
   }
-  async function updateMission(id,{title,description='',category,points=0,requiresApproval=false,isActive=true,activeFrom=null,activeUntil=null}) {
+  async function updateMission(id,{title,description='',category,points=0,isActive=true,activeFrom=null,activeUntil=null}) {
     const {error}=await client.from('missions').update({
       title,description,category,points,
-      requires_admin_approval:!!requiresApproval,
+      requires_admin_approval:false,
       is_active:isActive!==false,
       active_from:activeFrom||null,
       active_until:activeUntil||null
@@ -350,6 +355,11 @@
       const {error:insErr}=await client.from('team_members').insert({profile_id:profileId,team_id:teamId});
       if(insErr) throw insErr;
     }
+  }
+  async function applyTeamAssignments(assignments) {
+    const {data,error}=await client.rpc('apply_team_assignments',{assignments});
+    if(error) throw error;
+    return data;
   }
   async function updateProfile({fullName,organization,title,interests,bio}) {
     const {error}=await client.from('profiles').update({full_name:fullName,organization,title,interests,bio}).eq('id',session.user.id);
@@ -468,7 +478,7 @@
   function getConfig(){ return cfg(); }
 
   window.MayoCloud={
-    configured,wantsCloud,init,sendMagicLink,signInWithPassword,requestPasswordReset,updatePassword,signUpWithPassword,signOut,getSession,loadState,completeMission,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,updateAnnouncement,setAnnouncementActive,createMission,updateMission,setMissionActive,createSchedule,updateSchedule,deleteSchedule,createTeam,renameTeam,deleteTeam,setParticipantTeam,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,updatePoll,setPollActive,closePoll,reopenPoll,votePoll,adminUserRequest,subscribe,
+    configured,wantsCloud,init,sendMagicLink,signInWithPassword,requestPasswordReset,updatePassword,signUpWithPassword,signOut,getSession,loadState,completeMission,undoMission,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,updateAnnouncement,setAnnouncementActive,createMission,updateMission,setMissionActive,createSchedule,updateSchedule,deleteSchedule,createTeam,renameTeam,deleteTeam,setParticipantTeam,applyTeamAssignments,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,updatePoll,setPollActive,closePoll,reopenPoll,votePoll,adminUserRequest,subscribe,
     saveConfig,clearConfig,getConfig,
     get client(){return client;},get session(){return session;},get lastAuthEvent(){return lastAuthEvent;}
   };

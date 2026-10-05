@@ -1,5 +1,5 @@
-const CACHE='mayo-2026-github-beta-v7-10-schedule-cleanup';
-const ASSETS=['./','index.html','styles.css?v=7.10','config.js?v=7.10','cloud.js?v=7.10','app.js?v=7.10','manifest.json','icon.svg','jstarx-logo.png','planex-logo.png','planex-favicon.png'];
+const CACHE='mayo-2026-github-beta-v7-12-self-certified-balanced-teams';
+const ASSETS=['./','index.html','styles.css?v=7.12','config.js?v=7.12','cloud.js?v=7.12','app.js?v=7.12','manifest.json','icon.svg','jstarx-logo.png','planex-logo.png','planex-favicon.png'];
 self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).catch(()=>{}));});
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{

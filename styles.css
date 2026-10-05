@@ -312,3 +312,24 @@ button{cursor:pointer}
   .admin-user-row .admin-row-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}
   .admin-user-row .admin-row-actions .btn:last-child{grid-column:1 / -1}
 }
+
+
+/* v7.12 self-certified missions + balanced team drafting */
+.team-auto-box{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 14px;margin-bottom:13px;border:1px solid #F0B4D0;border-radius:14px;background:#FFF8FB}
+.team-auto-box p{margin:4px 0 0;color:var(--muted);font-size:11.5px;line-height:1.4;max-width:480px}
+.team-draft{margin-bottom:16px;padding:13px;border:1px solid #E8B2CC;border-radius:14px;background:#fff}
+.team-draft-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.team-draft-head small{display:block;color:var(--muted);margin-top:2px}
+.team-draft-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.team-draft-card{border:1px solid var(--line);border-radius:12px;padding:10px;background:#FAFCFE}
+.team-draft-title{display:flex;justify-content:space-between;gap:8px;padding-bottom:7px;margin-bottom:5px;border-bottom:1px solid var(--line);color:var(--navy)}
+.team-draft-person{padding:5px 0;border-bottom:1px dashed #E8EDF3}
+.team-draft-person:last-child{border-bottom:0}
+.team-draft-person b{display:block;font-size:12px}
+.team-draft-person small{display:block;color:var(--muted);font-size:10.5px;margin-top:1px}
+.team-draft-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:11px}
+@media(max-width:620px){
+  .team-auto-box{align-items:stretch;flex-direction:column}
+  .team-draft-grid{grid-template-columns:1fr}
+  .team-draft-actions{display:grid;grid-template-columns:1fr}
+}
