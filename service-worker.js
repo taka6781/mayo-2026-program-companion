@@ -1,5 +1,5 @@
-const CACHE='mayo-2026-production-pwa-v8-2-timer-audio';
-const ASSETS=['./','index.html','styles.css?v=8.2','config.js?v=8.2','cloud.js?v=8.2','app.js?v=8.2','manifest.json','icon.svg','jstarx-logo.png','planex-logo.png','planex-favicon.png','apple-touch-icon.png','pwa-icon-192.png','pwa-icon-512.png'];
+const CACHE='mayo-2026-production-pwa-v8-3-message-performance';
+const ASSETS=['./','index.html','styles.css?v=8.3','config.js?v=8.3','cloud.js?v=8.3','app.js?v=8.3','manifest.json','icon.svg','jstarx-logo.png','planex-logo.png','planex-favicon.png','apple-touch-icon.png','pwa-icon-192.png','pwa-icon-512.png'];
 self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).catch(()=>{}));});
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{

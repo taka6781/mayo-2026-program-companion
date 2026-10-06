@@ -201,19 +201,48 @@
     const direct={};
     let team=[];
     const conversations=[];
-    for (const cm of (convMembersR.data||[])) {
+    const myConversationRows=(convMembersR.data||[]).filter(cm=>cm.conversations);
+    const conversationIds=myConversationRows.map(cm=>cm.conversations.id);
+
+    let allConversationMembers=[];
+    let allConversationMessages=[];
+    if(conversationIds.length){
+      const [allMembersR,allMessagesR]=await Promise.all([
+        client.from('conversation_members').select('conversation_id,profile_id').in('conversation_id',conversationIds),
+        client.from('messages').select('id,conversation_id,sender_id,body,created_at').in('conversation_id',conversationIds).order('created_at')
+      ]);
+      if(allMembersR.error)throw allMembersR.error;
+      if(allMessagesR.error)throw allMessagesR.error;
+      allConversationMembers=allMembersR.data||[];
+      allConversationMessages=allMessagesR.data||[];
+    }
+
+    const membersByConversation={};
+    allConversationMembers.forEach(row=>{
+      (membersByConversation[row.conversation_id]||(membersByConversation[row.conversation_id]=[])).push(row.profile_id);
+    });
+    const messagesByConversation={};
+    allConversationMessages.forEach(row=>{
+      (messagesByConversation[row.conversation_id]||(messagesByConversation[row.conversation_id]=[])).push(row);
+    });
+
+    for (const cm of myConversationRows) {
       const conv=cm.conversations;
-      if(!conv) continue;
-      const {data:members,error:memberErr}=await client.from('conversation_members').select('profile_id').eq('conversation_id',conv.id);
-      if(memberErr) throw memberErr;
-      const {data:msgs,error:msgErr}=await client.from('messages').select('id,sender_id,body,created_at').eq('conversation_id',conv.id).order('created_at');
-      if(msgErr) throw msgErr;
-      const mapped=(msgs||[]).map(m=>({id:m.id,from:m.sender_id,text:m.body,ts:messageTime(m.created_at),createdAt:m.created_at}));
-      const unreadCount=(msgs||[]).filter(m=>m.sender_id!==uid && (!cm.last_read_at || new Date(m.created_at)>new Date(cm.last_read_at))).length;
-      if(conv.conversation_type==='team') { team=mapped; unread.team+=unreadCount; conversations.push({id:conv.id,type:'team'}); }
-      else {
-        const other=(members||[]).map(x=>x.profile_id).find(x=>x!==uid);
-        if(other){ direct[other]=mapped; unread[other]=unreadCount; conversations.push({id:conv.id,type:'direct',otherId:other}); }
+      const members=membersByConversation[conv.id]||[];
+      const msgs=messagesByConversation[conv.id]||[];
+      const mapped=msgs.map(m=>({id:m.id,from:m.sender_id,text:m.body,ts:messageTime(m.created_at),createdAt:m.created_at}));
+      const unreadCount=msgs.filter(m=>m.sender_id!==uid && (!cm.last_read_at || new Date(m.created_at)>new Date(cm.last_read_at))).length;
+      if(conv.conversation_type==='team'){
+        team=mapped;
+        unread.team+=unreadCount;
+        conversations.push({id:conv.id,type:'team'});
+      }else{
+        const other=members.find(x=>x!==uid);
+        if(other){
+          direct[other]=mapped;
+          unread[other]=unreadCount;
+          conversations.push({id:conv.id,type:'direct',otherId:other});
+        }
       }
     }
 
@@ -304,7 +333,8 @@
     const {data:message,error}=await client.from('messages').insert({conversation_id:convId,sender_id:session.user.id,body:text}).select('id').single();
     if(error) throw error;
     await client.from('conversation_members').update({last_read_at:new Date().toISOString()}).eq('conversation_id',convId).eq('profile_id',session.user.id);
-    try{await triggerPush('message',{messageId:message.id})}catch(e){console.warn('Push notification dispatch failed',e)}
+    // Push is intentionally fire-and-forget so message sending is never blocked by notification delivery.
+    triggerPush('message',{messageId:message.id}).catch(e=>console.warn('Push notification dispatch failed',e));
   }
   async function markConversationRead(convId) {
     if(!convId) return;
@@ -318,7 +348,8 @@
   async function createAnnouncement(title,body) {
     const {data:announcement,error}=await client.from('announcements').insert({title,body,is_active:true,created_by:session.user.id}).select('id').single();
     if(error) throw error;
-    try{await triggerPush('announcement',{announcementId:announcement.id})}catch(e){console.warn('Push notification dispatch failed',e)}
+    // Publishing should complete immediately; notification delivery continues in the background.
+    triggerPush('announcement',{announcementId:announcement.id}).catch(e=>console.warn('Push notification dispatch failed',e));
   }
   async function updateAnnouncement(id,{title,body}) {
     const {error}=await client.from('announcements').update({title,body}).eq('id',id);
