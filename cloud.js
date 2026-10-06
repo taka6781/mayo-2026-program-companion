@@ -539,7 +539,21 @@
   function subscribe(onChange) {
     if(!client || !session?.user) return;
     if(realtimeChannel) client.removeChannel(realtimeChannel);
-    const trigger=()=>{clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>onChange?.(),350);};
+    let pendingChange=null;
+    const trigger=(payload)=>{
+      pendingChange={
+        table:payload?.table||null,
+        eventType:payload?.eventType||null,
+        new:payload?.new||null,
+        old:payload?.old||null
+      };
+      clearTimeout(refreshTimer);
+      refreshTimer=setTimeout(()=>{
+        const change=pendingChange;
+        pendingChange=null;
+        onChange?.(change);
+      },180);
+    };
     realtimeChannel=client.channel(`mayo-beta-${session.user.id}`)
       .on('postgres_changes',{event:'*',schema:'public',table:'messages'},trigger)
       .on('postgres_changes',{event:'*',schema:'public',table:'announcements'},trigger)

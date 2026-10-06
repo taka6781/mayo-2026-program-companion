@@ -53,6 +53,9 @@ let backendMode='local';
 let cloudRefreshing=false;
 let cloudRefreshPromise=null;
 let signInFlowActive=false;
+let activeChat=null;
+let messageAudioEl=null;
+let messageAudioUnlocked=false;
 
 // Preserve the participant's Schedule view when the app re-renders after
 // backgrounding, realtime updates, or an auth token refresh.
@@ -131,7 +134,7 @@ function navTo(r){
 }
 function setTitle(t){$('#pageTitle').textContent=t}
 function openModal(html){$('#modalContent').innerHTML=html;$('#modal').classList.remove('hidden')}
-function closeModal(){$('#modal').classList.add('hidden');$('#modalContent').innerHTML=''}
+function closeModal(){activeChat=null;$('#modal').classList.add('hidden');$('#modalContent').innerHTML=''}
 function setSyncBadge(text,kind='local'){const el=$('#syncBadge');if(!el)return;el.textContent=text;el.className=`sync-badge ${kind}`}
 function showError(err){console.error(err);alert(err?.message||String(err))}
 
@@ -161,6 +164,110 @@ async function refreshCloudState({renderPage=true,throwOnError=false}={}){
     cloudRefreshPromise=null;
     cloudRefreshing=false;
   }
+}
+
+
+function prepareMessageAudio(){
+  try{
+    if(!messageAudioEl){
+      messageAudioEl=new Audio('timer-bell.wav?v=8.4');
+      messageAudioEl.preload='auto';
+      messageAudioEl.playsInline=true;
+      messageAudioEl.load();
+    }
+    return true;
+  }catch(e){
+    console.warn('Message audio setup failed',e);
+    return false;
+  }
+}
+
+async function unlockMessageAudio(){
+  prepareMessageAudio();
+  if(messageAudioUnlocked||!messageAudioEl)return messageAudioUnlocked;
+  try{
+    messageAudioEl.currentTime=0;
+    messageAudioEl.volume=0.001;
+    await messageAudioEl.play();
+    messageAudioEl.pause();
+    messageAudioEl.currentTime=0;
+    messageAudioEl.volume=0.75;
+    messageAudioUnlocked=true;
+    return true;
+  }catch(e){
+    console.warn('Message audio unlock failed',e);
+    return false;
+  }
+}
+
+async function playIncomingMessageSound(){
+  prepareMessageAudio();
+  try{
+    if(!messageAudioUnlocked)return false;
+    messageAudioEl.pause();
+    messageAudioEl.currentTime=0;
+    messageAudioEl.volume=0.75;
+    await messageAudioEl.play();
+    try{if(navigator.vibrate)navigator.vibrate(120)}catch(_e){}
+    return true;
+  }catch(e){
+    console.warn('Incoming message sound blocked',e);
+    return false;
+  }
+}
+
+// Unlock foreground chat audio on the first real user interaction in the PWA.
+document.addEventListener('pointerdown',()=>{unlockMessageAudio().catch(()=>{})},{once:true,capture:true});
+
+function syncOpenChatFromState(){
+  if(!activeChat||!$('#chatBody'))return;
+  let msgs=[];
+  if(activeChat.type==='team'){
+    msgs=state.messages.team||[];
+    state.unread.team=0;
+  }else if(activeChat.type==='direct'){
+    msgs=state.messages.direct?.[activeChat.id]||[];
+    state.unread[activeChat.id]=0;
+  }else return;
+
+  const body=$('#chatBody');
+  body.innerHTML=msgs.map(m=>chatBubble(m)).join('')||'<div class="empty">No messages yet. Say hello!</div>';
+  body.scrollTop=body.scrollHeight;
+
+  if(backendMode==='supabase'){
+    const conv=findConversation(activeChat.type,activeChat.id);
+    if(conv)MayoCloud.markConversationRead(conv.id).catch(console.error);
+  }
+}
+
+async function handleRealtimeChange(change){
+  const incomingMessage=
+    change?.table==='messages' &&
+    change?.eventType==='INSERT' &&
+    change?.new?.sender_id &&
+    change.new.sender_id!==state.currentUserId;
+
+  const ok=await refreshCloudState({renderPage:false});
+  if(!ok)return;
+
+  // Keep an already-open chat modal live instead of leaving it as a stale snapshot.
+  if(activeChat&&$('#chatBody')){
+    syncOpenChatFromState();
+    updateBadge();
+    if(route==='messages')renderMessageList($('.tab.active')?.dataset.mtab||'all');
+  }else{
+    render();
+  }
+
+  // Foreground PWA: provide an in-app chime because iOS may not play a
+  // system notification sound while the web app is active.
+  if(incomingMessage && document.visibilityState==='visible'){
+    playIncomingMessageSound().catch(()=>{});
+  }
+}
+
+function startRealtimeSubscription(){
+  MayoCloud.subscribe(handleRealtimeChange);
 }
 
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -260,7 +367,7 @@ function renderLogin(){
       const data=await MayoCloud.signUpWithPassword({email,password,fullName,organization});
       if(data.session){
         $('#signupStatus').innerHTML='<b>Account created.</b><br>Signing you in…';
-        await refreshCloudState();MayoCloud.subscribe(()=>refreshCloudState());
+        await refreshCloudState();startRealtimeSubscription();
       }else{
         $('#signupStatus').innerHTML='<b>Almost done — check your email.</b><br>Open the confirmation message from <b>no-reply@auth.planex-bp.com</b>. If you do not see the message, check your Junk/Spam folder. After confirming, return here and sign in with your email and password.';
       }
@@ -275,7 +382,7 @@ function renderLogin(){
       await MayoCloud.signInWithPassword(email,password);
       $('#loginStatus').textContent='Loading your account…';
       await loadSignedInStateWithRetry();
-      MayoCloud.subscribe(()=>refreshCloudState());
+      startRealtimeSubscription();
       route='home';
       render();
     }
@@ -384,7 +491,7 @@ function renderInviteSetup(){
       clearInviteSetupFlag();
       document.body.classList.remove('auth-screen');$('#roleBadge').classList.remove('hidden');
       await refreshCloudState({renderPage:false});
-      MayoCloud.subscribe(()=>refreshCloudState());
+      startRealtimeSubscription();
       route='home';render();
     }catch(e){showError(e);$('#inviteSetupStatus').textContent='Could not finish account setup. Please reopen the invitation email and try again.';btn.disabled=false;}
   };
@@ -639,8 +746,9 @@ function renderMessages(){setTitle('Messages');$('#view').innerHTML=`<div class=
 function renderMessageList(tab){const items=[];if(['all','announcements'].includes(tab)){const a=state.messages.announcements[0];items.push({type:'announcements',title:'Announcements',sub:a?.title||'No announcements yet',time:a?.ts||'',unread:state.unread.announcements||0,avatar:'📣'});}if(['all','team'].includes(tab)&&currentUser().team){const last=state.messages.team.at(-1);items.push({type:'team',title:`Team ${currentUser().team}`,sub:last?.text||'Start your team chat',time:last?.ts||'',unread:state.unread.team||0,avatar:'👥'});}if(['all','direct'].includes(tab))Object.entries(state.messages.direct||{}).forEach(([pid,msgs])=>{const p=person(pid);if(!p)return;const last=msgs.at(-1);items.push({type:'direct',id:pid,title:p.name,sub:last?.text||'',time:last?.ts||'',unread:state.unread[pid]||0,avatar:p.initials});});$('#messageList').innerHTML=items.map(x=>`<div class="list-row clickable" data-chat-type="${x.type}" data-chat-id="${x.id||''}"><div class="avatar">${esc(x.avatar)}</div><div class="main message-preview"><div class="main"><div class="meta"><h4 class="${x.unread?'unread':''}">${esc(x.title)}</h4><span class="time">${esc(x.time)}</span></div><div class="snippet ${x.unread?'unread':''}">${esc(x.sub)}</div></div></div>${x.unread?`<span class="badge" style="position:static">${x.unread}</span>`:'›'}</div>`).join('')||'<div class="empty">No messages yet.</div>';$$('[data-chat-type]').forEach(el=>el.onclick=()=>openChat(el.dataset.chatType,el.dataset.chatId));}
 function findConversation(type,id){return state.cloud?.conversations?.find(c=>c.type===type&&(type!=='direct'||c.otherId===id));}
 async function openChat(type,id){
-  if(type==='announcements'){state.unread.announcements=0;save();if(backendMode==='supabase')MayoCloud.markAnnouncementsRead(state.messages.announcements.map(a=>a.id)).catch(console.error);openModal(`<h2 id="modalTitle">Announcements</h2>${state.messages.announcements.map(a=>`<div class="card notice" style="margin-bottom:10px"><div class="time">${esc(a.ts)}</div><h3>${esc(a.title)}</h3><p>${esc(a.text)}</p></div>`).join('')||'<div class="empty">No announcements yet.</div>'}`);return;
+  if(type==='announcements'){activeChat=null;state.unread.announcements=0;save();if(backendMode==='supabase')MayoCloud.markAnnouncementsRead(state.messages.announcements.map(a=>a.id)).catch(console.error);openModal(`<h2 id="modalTitle">Announcements</h2>${state.messages.announcements.map(a=>`<div class="card notice" style="margin-bottom:10px"><div class="time">${esc(a.ts)}</div><h3>${esc(a.title)}</h3><p>${esc(a.text)}</p></div>`).join('')||'<div class="empty">No announcements yet.</div>'}`);return;
   }
+  activeChat={type,id};
   let title,msgs;if(type==='team'){title=`Team ${currentUser().team||''}`;msgs=state.messages.team||[];state.unread.team=0;}else{const p=person(id);title=p?.name||'Direct Message';msgs=state.messages.direct[id]||(state.messages.direct[id]=[]);state.unread[id]=0;}save();
   if(backendMode==='supabase'){const conv=findConversation(type,id);if(conv)MayoCloud.markConversationRead(conv.id).catch(console.error);}
   openModal(`<h2 id="modalTitle">${esc(title)}</h2><div id="chatBody" class="chat">${msgs.map(m=>chatBubble(m)).join('')||'<div class="empty">No messages yet. Say hello!</div>'}</div><div class="composer"><input id="chatInput" placeholder="Type a message…"><button id="sendChat">➤</button></div>`);$('#chatBody').scrollTop=$('#chatBody').scrollHeight;$('#sendChat').onclick=()=>sendChat(type,id);$('#chatInput').onkeydown=e=>{if(e.key==='Enter')sendChat(type,id)};
@@ -1510,7 +1618,7 @@ async function bootstrap(){
       if(recoveryModeActive()){renderPasswordRecovery();return;}
       if(!result.session){renderLogin();return;}
       if(inviteSetupRequested()){renderInviteSetup();return;}
-      await refreshCloudState({renderPage:false});window.MayoCloud.subscribe(()=>refreshCloudState());render();
+      await refreshCloudState({renderPage:false});window.startRealtimeSubscription();render();
     }else{state=loadLocalState();setSyncBadge('Local Demo','local');render();}
   }catch(e){console.error(e);backendMode='local';state=loadLocalState();setSyncBadge('Local fallback','error');render();openModal(`<h2 id="modalTitle">Cloud connection issue</h2><p>The app could not start Supabase, so it opened in Local Demo mode.</p><p class="muted">${esc(e.message||String(e))}</p>`);}
 }
@@ -1533,7 +1641,7 @@ window.addEventListener('mayo-auth-changed',async(e)=>{
     const s=e?.detail?.session || await MayoCloud.getSession();
     if(s){
       const ok=await refreshCloudState({renderPage:false});
-      if(ok){MayoCloud.subscribe(()=>refreshCloudState());render();}
+      if(ok){startRealtimeSubscription();render();}
     }else renderLogin();
   }catch(err){console.error('Auth state refresh failed',err);}
 });
