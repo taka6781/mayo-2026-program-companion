@@ -45,6 +45,8 @@ if(!['home','schedule','challenge','people','messages','more'].includes(route))r
 let interval=null;
 let audioCtx=null;
 let timerWakeLock=null;
+let timerAudioEl=null;
+let timerAudioUnlocked=false;
 const PUSH_VAPID_PUBLIC_KEY='BG6cErWnJazOeeBi1Y2ZRC2ZIvUAWIJnPg0PJSg8y1McWpbbfLqvVY-Uq4Aa3OxGuh_wGeuwS7bj6UpkWB-JZ80';
 let timer={total:180,remaining:180,running:false};
 let backendMode='local';
@@ -737,12 +739,131 @@ function toolPoll(){const polls=[...(state.polls||[])].filter(p=>state.role==='a
 function pollCardHtml(p,isAdmin){const open=pollIsOpen(p),my=voteLabel(p);if(isAdmin){return `<section class="card poll-card"><div class="section-head"><h3>${esc(p.question)}</h3><span class="pill ${open?'green':'orange'}">${esc(pollStatusText(p))}</span></div>${pollResultsHtml(p)}${open?`<button class="btn pink full" data-close-poll="${p.id}">Close & Publish Results</button>`:'<p class="muted">Results published to participants.</p>'}</section>`}return `<section class="card poll-card"><div class="section-head"><h3>${esc(p.question)}</h3><span class="pill ${open?'green':'orange'}">${esc(pollStatusText(p))}</span></div>${open?`<div class="poll-choice-list">${p.options.map(o=>`<button class="poll-choice ${p.myVote===o.id?'selected-option':''}" data-vote-poll="${p.id}" data-vote-option="${o.id}">${esc(o.label)}${p.myVote===o.id?' ✓':''}</button>`).join('')}</div><p class="muted">Your vote: <b>${esc(my)}</b>. Interim results are hidden until the poll closes.</p>`:`<p class="muted">You voted: <b>${esc(my)}</b></p>${pollResultsHtml(p)}`}</section>`}
 function bindPollActions(){$$('[data-vote-poll]').forEach(b=>b.onclick=async()=>{const pollId=b.dataset.votePoll,optId=b.dataset.voteOption;try{if(backendMode==='supabase'){await MayoCloud.votePoll(pollId,optId);await refreshCloudState({renderPage:false});}else{const p=state.polls.find(x=>x.id===pollId);if(p){p.myVote=optId;save();}}toolPoll();}catch(e){showError(e)}});$$('[data-close-poll]').forEach(b=>b.onclick=async()=>{if(!confirm('Close this poll and publish results to participants?'))return;try{if(backendMode==='supabase'){await MayoCloud.closePoll(b.dataset.closePoll);await refreshCloudState({renderPage:false});}else{const p=state.polls.find(x=>x.id===b.dataset.closePoll);if(p){p.isOpen=false;p.resultsPublished=true;save();}}toolPoll();}catch(e){showError(e)}})}
 function pollTotal(p){return p.options.reduce((a,b)=>a+(Number(b.votes)||0),0)}
-function toolTimer(){timer.running=false;if(interval)clearInterval(interval);releaseTimerWakeLock();openModal(`<h2 id="modalTitle">Presentation Timer</h2><div class="tabs"><button class="tab" data-preset="30">30 sec</button><button class="tab" data-preset="60">1 min</button><button class="tab" data-preset="120">2 min</button><button class="tab active" data-preset="180">3 min</button><button class="tab" data-preset="300">5 min</button></div><div id="timerRing" class="timer-ring"><div id="timerDisplay" class="timer-display">03:00</div></div><div class="controls"><button class="btn green" id="timerStart">Start</button><button class="btn ghost" id="timerTestSound">Test Sound</button><button class="btn ghost" id="timerReset">Reset</button></div><p class="muted center">For 2, 3 and 5 minute timers: one bell at 1 minute remaining. All timers: two bells at time up. On iPhone, tap Test Sound once before a presentation to confirm audible playback.</p>`);timer={total:180,remaining:180,running:false};renderTimer();$$('[data-preset]').forEach(b=>b.onclick=()=>{timer.total=timer.remaining=+b.dataset.preset;$$('[data-preset]').forEach(x=>x.classList.toggle('active',x===b));renderTimer()});$('#timerStart').onclick=toggleTimer;$('#timerTestSound').onclick=async()=>{await unlockTimerAudio();beep(880,.18,1)};$('#timerReset').onclick=()=>{timer.remaining=timer.total;timer.running=false;clearInterval(interval);releaseTimerWakeLock();$('#timerStart').textContent='Start';renderTimer()};}
-async function unlockTimerAudio(){try{const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)return false;audioCtx=audioCtx||new Ctx();if(audioCtx.state==='suspended')await audioCtx.resume();const o=audioCtx.createOscillator(),g=audioCtx.createGain();g.gain.value=.0001;o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+.02);return true}catch(e){console.warn('Timer audio unlock failed',e);return false}}
-function beep(freq=880,duration=.16,count=1){try{const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)return;audioCtx=audioCtx||new Ctx();if(audioCtx.state==='suspended')audioCtx.resume().catch(()=>{});let t=audioCtx.currentTime+.02;for(let i=0;i<count;i++){const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='sine';o.frequency.value=freq;o.connect(g);g.connect(audioCtx.destination);g.gain.setValueAtTime(.22,t);g.gain.exponentialRampToValueAtTime(.001,t+duration);o.start(t);o.stop(t+duration);t+=duration+.14}}catch(e){console.warn('Timer beep failed',e)}}
+function toolTimer(){
+  timer.running=false;if(interval)clearInterval(interval);releaseTimerWakeLock();
+  openModal(`<h2 id="modalTitle">Presentation Timer</h2>
+    <div class="tabs"><button class="tab" data-preset="30">30 sec</button><button class="tab" data-preset="60">1 min</button><button class="tab" data-preset="120">2 min</button><button class="tab active" data-preset="180">3 min</button><button class="tab" data-preset="300">5 min</button></div>
+    <div id="timerRing" class="timer-ring"><div id="timerDisplay" class="timer-display">03:00</div></div>
+    <div class="controls"><button class="btn green" id="timerStart">Start</button><button class="btn ghost" id="timerTestSound">Test Sound</button><button class="btn ghost" id="timerReset">Reset</button></div>
+    <p id="timerSoundStatus" class="muted center">Tap Test Sound once. You should hear a short bell.</p>
+    <p class="muted center">For 2, 3 and 5 minute timers: one bell at 1 minute remaining. All timers: two bells at time up.</p>`);
+  timer={total:180,remaining:180,running:false};renderTimer();
+  prepareTimerAudio();
+  $$('[data-preset]').forEach(b=>b.onclick=()=>{timer.total=timer.remaining=+b.dataset.preset;$$('[data-preset]').forEach(x=>x.classList.toggle('active',x===b));renderTimer()});
+  $('#timerStart').onclick=toggleTimer;
+  $('#timerTestSound').onclick=async()=>{
+    const ok=await playTimerBell(1,true);
+    const s=$('#timerSoundStatus');
+    if(s)s.textContent=ok?'✓ Sound played. If you did not hear it, check iPhone volume/Silent Mode and iOS version.':'⚠ Audio playback was blocked by iOS. See the troubleshooting note below.';
+  };
+  $('#timerReset').onclick=()=>{timer.remaining=timer.total;timer.running=false;clearInterval(interval);releaseTimerWakeLock();$('#timerStart').textContent='Start';renderTimer()};
+}
+
+function prepareTimerAudio(){
+  try{
+    if(!timerAudioEl){
+      timerAudioEl=new Audio('timer-bell.wav?v=8.2');
+      timerAudioEl.preload='auto';
+      timerAudioEl.playsInline=true;
+      timerAudioEl.load();
+    }
+    return true;
+  }catch(e){
+    console.warn('Timer HTMLAudio setup failed',e);
+    return false;
+  }
+}
+
+async function unlockTimerAudio(){
+  prepareTimerAudio();
+  try{
+    // A direct play from the user's tap is the most reliable iOS/PWA unlock path.
+    timerAudioEl.currentTime=0;
+    timerAudioEl.volume=0.001;
+    await timerAudioEl.play();
+    timerAudioEl.pause();
+    timerAudioEl.currentTime=0;
+    timerAudioEl.volume=1;
+    timerAudioUnlocked=true;
+    return true;
+  }catch(e){
+    console.warn('Timer HTMLAudio unlock failed',e);
+    timerAudioUnlocked=false;
+    return false;
+  }
+}
+
+async function playTimerBell(count=1,fromUserGesture=false){
+  prepareTimerAudio();
+  if(fromUserGesture&&!timerAudioUnlocked){
+    // Play audibly during the user gesture instead of doing a silent WebAudio unlock.
+    try{
+      timerAudioEl.currentTime=0;
+      timerAudioEl.volume=1;
+      await timerAudioEl.play();
+      timerAudioUnlocked=true;
+      if(count>1){
+        await new Promise(r=>setTimeout(r,520));
+        timerAudioEl.currentTime=0;
+        await timerAudioEl.play();
+      }
+      return true;
+    }catch(e){
+      console.warn('Timer direct audio test failed',e);
+    }
+  }
+  try{
+    if(!timerAudioUnlocked){
+      const unlocked=await unlockTimerAudio();
+      if(!unlocked)throw new Error('Audio could not be unlocked');
+    }
+    timerAudioEl.pause();
+    timerAudioEl.currentTime=0;
+    timerAudioEl.volume=1;
+    await timerAudioEl.play();
+    for(let i=1;i<count;i++){
+      await new Promise(r=>setTimeout(r,520));
+      timerAudioEl.currentTime=0;
+      await timerAudioEl.play();
+    }
+    return true;
+  }catch(e){
+    console.warn('Timer bell playback failed',e);
+    // Best-effort fallback for devices where PWA audio is temporarily unavailable.
+    try{if(navigator.vibrate)navigator.vibrate(count>1?[220,140,220]:220)}catch(_e){}
+    return false;
+  }
+}
+
 async function requestTimerWakeLock(){try{if('wakeLock' in navigator&&!timerWakeLock)timerWakeLock=await navigator.wakeLock.request('screen')}catch(e){console.warn('Wake lock unavailable',e)}}
 function releaseTimerWakeLock(){try{timerWakeLock?.release?.()}catch(_e){}timerWakeLock=null}
-async function toggleTimer(){timer.running=!timer.running;$('#timerStart').textContent=timer.running?'Pause':'Start';clearInterval(interval);if(timer.running){await unlockTimerAudio();requestTimerWakeLock();interval=setInterval(()=>{timer.remaining--;const oneMinuteAlert=[120,180,300].includes(timer.total)&&timer.remaining===60;if(oneMinuteAlert){if(navigator.vibrate)navigator.vibrate(120);beep(880,.16,1)}if(timer.remaining===0){if(navigator.vibrate)navigator.vibrate([180,120,180]);beep(620,.18,2);timer.running=false;clearInterval(interval);releaseTimerWakeLock();$('#timerStart').textContent='Start'}if(timer.remaining<0)timer.remaining=0;renderTimer();},1000)}else{releaseTimerWakeLock()}}
+async function toggleTimer(){
+  const starting=!timer.running;
+  timer.running=starting;
+  $('#timerStart').textContent=timer.running?'Pause':'Start';
+  clearInterval(interval);
+  if(timer.running){
+    // Start is itself a user gesture; use it to unlock the real audio element.
+    if(!timerAudioUnlocked)await unlockTimerAudio();
+    requestTimerWakeLock();
+    interval=setInterval(async()=>{
+      timer.remaining--;
+      const oneMinuteAlert=[120,180,300].includes(timer.total)&&timer.remaining===60;
+      if(oneMinuteAlert)await playTimerBell(1,false);
+      if(timer.remaining===0){
+        await playTimerBell(2,false);
+        timer.running=false;
+        clearInterval(interval);
+        releaseTimerWakeLock();
+        $('#timerStart').textContent='Start';
+      }
+      if(timer.remaining<0)timer.remaining=0;
+      renderTimer();
+    },1000);
+  }else{
+    releaseTimerWakeLock();
+  }
+}
 
 function renderTimer(){const d=$('#timerDisplay'),r=$('#timerRing');if(!d)return;const m=Math.floor(timer.remaining/60),s=timer.remaining%60;d.textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;r.classList.toggle('warning',timer.remaining<=60&&timer.remaining>30);r.classList.toggle('danger',timer.remaining<=30&&timer.remaining>0);r.classList.toggle('done',timer.remaining===0)}
 
