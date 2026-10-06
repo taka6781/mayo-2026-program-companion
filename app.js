@@ -44,6 +44,8 @@ let route=sessionStorage.getItem(routeKey)||'home';
 if(!['home','schedule','challenge','people','messages','more'].includes(route))route='home';
 let interval=null;
 let audioCtx=null;
+let timerWakeLock=null;
+const PUSH_VAPID_PUBLIC_KEY='BG6cErWnJazOeeBi1Y2ZRC2ZIvUAWIJnPg0PJSg8y1McWpbbfLqvVY-Uq4Aa3OxGuh_wGeuwS7bj6UpkWB-JZ80';
 let timer={total:180,remaining:180,running:false};
 let backendMode='local';
 let cloudRefreshing=false;
@@ -649,12 +651,51 @@ function renderMore(){
   const account=`<section class="account-strip"><div><b>${esc(u.name)}</b><small>${esc(MayoCloud.session?.user?.email||u.org||'Participant')}</small></div><div class="account-actions"><button class="btn ghost compact" id="editProfile">Edit Profile</button>${backendMode==='supabase'?'<button class="btn ghost compact" id="signOutBtn">Sign Out</button>':''}</div></section>`;
   const participantTools=`<div class="grid two">${toolCard('timer','⏱','Presentation Timer','30 sec, 1, 2, 3 & 5 min')}${toolCard('poll','▥','Quick Poll','Vote and review your poll history')}</div>`;
   const adminTools=isAdmin?`<section class="section"><div class="section-head"><h3>Admin Tools</h3><span class="pill orange">Admin only</span></div><div class="grid two">${toolCard('grouping','👥','Grouping','Balanced random groups')}${toolCard('random','🎲','Random Pick','Pick a participant')}</div><div class="spacer"></div><button class="btn full" id="openAdmin">Open Admin Panel</button></section>`:'';
-  $('#view').innerHTML=`${account}<section class="section"><div class="section-head"><h3>Program Tools</h3><span class="pill">${backendMode==='supabase'?'Beta':'Prototype'}</span></div>${participantTools}</section>${adminTools}<section class="section"><div class="section-head"><h3>Privacy & Use</h3></div><div class="policy-inline"><button class="text-link" id="morePrivacy">Privacy Notice</button><span>•</span><button class="text-link" id="moreTerms">Terms of Use</button></div></section>`;
+  const standalone=window.matchMedia?.('(display-mode: standalone)').matches||window.navigator.standalone===true;
+  const notificationSection=backendMode==='supabase'?`<section class="section"><div class="section-head"><h3>Notifications</h3><span class="pill" id="notificationStatus">Checking…</span></div><div class="card notification-card"><div><b>Message notifications</b><p>Direct messages, team messages, and program announcements. Schedule/event notifications are off.</p><small>${standalone?'Notifications can appear on your Lock Screen after you allow them.':'Add Mayo 2026 to the iPhone Home Screen and open the installed app to enable notifications.'}</small></div><button class="btn pink" id="notificationToggle" ${standalone?'':'disabled'}>${standalone?'Enable Notifications':'Home Screen App Required'}</button></div></section>`:'';
+  $('#view').innerHTML=`${account}<section class="section"><div class="section-head"><h3>Program Tools</h3><span class="pill">${backendMode==='supabase'?'Live':'Prototype'}</span></div>${participantTools}</section>${notificationSection}${adminTools}<section class="section"><div class="section-head"><h3>Privacy & Use</h3></div><div class="policy-inline"><button class="text-link" id="morePrivacy">Privacy Notice</button><span>•</span><button class="text-link" id="moreTerms">Terms of Use</button></div></section>`;
   $$('[data-tool]').forEach(el=>el.onclick=()=>openTool(el.dataset.tool));
   if($('#openAdmin'))$('#openAdmin').onclick=openAdmin;
+  if($('#notificationToggle')){
+    $('#notificationToggle').onclick=togglePushNotifications;
+    syncNotificationUI();
+  }
   $('#editProfile').onclick=editMyProfile;$('#morePrivacy').onclick=openPrivacyNotice;$('#moreTerms').onclick=openTermsOfUse;
   if($('#signOutBtn'))$('#signOutBtn').onclick=async()=>{await MayoCloud.signOut();renderLogin();};
 }
+async function syncNotificationUI(){
+  const status=$('#notificationStatus'),btn=$('#notificationToggle');if(!status||!btn)return;
+  const standalone=window.matchMedia?.('(display-mode: standalone)').matches||window.navigator.standalone===true;
+  if(!standalone){status.textContent='PWA only';status.className='pill orange';btn.disabled=true;return;}
+  if(!('Notification' in window)||!('serviceWorker' in navigator)||!('PushManager' in window)){
+    status.textContent='Not supported';status.className='pill orange';btn.disabled=true;return;
+  }
+  try{
+    const sub=await MayoCloud.getPushSubscription();
+    if(Notification.permission==='denied'){
+      status.textContent='Blocked';status.className='pill orange';btn.textContent='Notifications Blocked';btn.disabled=true;
+    }else if(sub){
+      status.textContent='On';status.className='pill green';btn.textContent='Disable Notifications';btn.disabled=false;
+    }else{
+      status.textContent=Notification.permission==='granted'?'Off':'Not enabled';status.className='pill orange';btn.textContent='Enable Notifications';btn.disabled=false;
+    }
+  }catch(e){console.warn(e);status.textContent='Unavailable';status.className='pill orange';}
+}
+async function togglePushNotifications(){
+  const btn=$('#notificationToggle');if(!btn)return;
+  btn.disabled=true;
+  try{
+    const existing=await MayoCloud.getPushSubscription();
+    if(existing){
+      await MayoCloud.disablePushNotifications();
+    }else{
+      const result=await MayoCloud.enablePushNotifications(PUSH_VAPID_PUBLIC_KEY);
+      if(result==='denied')alert('Notifications are blocked for Mayo 2026. You can change this in iPhone Settings > Notifications > Mayo 2026.');
+    }
+  }catch(e){showError(e)}
+  finally{btn.disabled=false;await syncNotificationUI();}
+}
+
 function editMyProfile(){
   const u=currentUser();
   openModal(`<h2 id="modalTitle">Edit My Profile</h2><div class="form-group"><label>Name</label><input id="pName" value="${esc(u.name)}"></div><div class="form-group"><label>Organization</label><input id="pOrg" value="${esc(u.org)}"></div><div class="form-group"><label>Title / Role</label><input id="pTitle" value="${esc(u.title)}"></div><div class="form-group"><label>Interests</label><input id="pInterests" value="${esc(u.interests)}"></div><div class="form-group"><label>About me</label><textarea id="pBio">${esc(u.bio)}</textarea></div><button class="btn pink full" id="saveProfile">Save Profile</button>`);
@@ -696,9 +737,12 @@ function toolPoll(){const polls=[...(state.polls||[])].filter(p=>state.role==='a
 function pollCardHtml(p,isAdmin){const open=pollIsOpen(p),my=voteLabel(p);if(isAdmin){return `<section class="card poll-card"><div class="section-head"><h3>${esc(p.question)}</h3><span class="pill ${open?'green':'orange'}">${esc(pollStatusText(p))}</span></div>${pollResultsHtml(p)}${open?`<button class="btn pink full" data-close-poll="${p.id}">Close & Publish Results</button>`:'<p class="muted">Results published to participants.</p>'}</section>`}return `<section class="card poll-card"><div class="section-head"><h3>${esc(p.question)}</h3><span class="pill ${open?'green':'orange'}">${esc(pollStatusText(p))}</span></div>${open?`<div class="poll-choice-list">${p.options.map(o=>`<button class="poll-choice ${p.myVote===o.id?'selected-option':''}" data-vote-poll="${p.id}" data-vote-option="${o.id}">${esc(o.label)}${p.myVote===o.id?' ✓':''}</button>`).join('')}</div><p class="muted">Your vote: <b>${esc(my)}</b>. Interim results are hidden until the poll closes.</p>`:`<p class="muted">You voted: <b>${esc(my)}</b></p>${pollResultsHtml(p)}`}</section>`}
 function bindPollActions(){$$('[data-vote-poll]').forEach(b=>b.onclick=async()=>{const pollId=b.dataset.votePoll,optId=b.dataset.voteOption;try{if(backendMode==='supabase'){await MayoCloud.votePoll(pollId,optId);await refreshCloudState({renderPage:false});}else{const p=state.polls.find(x=>x.id===pollId);if(p){p.myVote=optId;save();}}toolPoll();}catch(e){showError(e)}});$$('[data-close-poll]').forEach(b=>b.onclick=async()=>{if(!confirm('Close this poll and publish results to participants?'))return;try{if(backendMode==='supabase'){await MayoCloud.closePoll(b.dataset.closePoll);await refreshCloudState({renderPage:false});}else{const p=state.polls.find(x=>x.id===b.dataset.closePoll);if(p){p.isOpen=false;p.resultsPublished=true;save();}}toolPoll();}catch(e){showError(e)}})}
 function pollTotal(p){return p.options.reduce((a,b)=>a+(Number(b.votes)||0),0)}
-function toolTimer(){timer.running=false;if(interval)clearInterval(interval);openModal(`<h2 id="modalTitle">Presentation Timer</h2><div class="tabs"><button class="tab" data-preset="30">30 sec</button><button class="tab" data-preset="60">1 min</button><button class="tab" data-preset="120">2 min</button><button class="tab active" data-preset="180">3 min</button><button class="tab" data-preset="300">5 min</button></div><div id="timerRing" class="timer-ring"><div id="timerDisplay" class="timer-display">03:00</div></div><div class="controls"><button class="btn green" id="timerStart">Start</button><button class="btn ghost" id="timerReset">Reset</button></div><p class="muted center">For 2, 3 and 5 minute timers: one bell at 1 minute remaining. All timers: two bells at time up. Vibration is used when supported.</p>`);timer={total:180,remaining:180,running:false};renderTimer();$$('[data-preset]').forEach(b=>b.onclick=()=>{timer.total=timer.remaining=+b.dataset.preset;$$('[data-preset]').forEach(x=>x.classList.toggle('active',x===b));renderTimer()});$('#timerStart').onclick=toggleTimer;$('#timerReset').onclick=()=>{timer.remaining=timer.total;timer.running=false;clearInterval(interval);$('#timerStart').textContent='Start';renderTimer()};}
-function beep(freq=880,duration=.16,count=1){try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();let t=audioCtx.currentTime;for(let i=0;i<count;i++){const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=freq;o.connect(g);g.connect(audioCtx.destination);g.gain.setValueAtTime(.15,t);g.gain.exponentialRampToValueAtTime(.001,t+duration);o.start(t);o.stop(t+duration);t+=duration+.14}}catch(_e){}}
-function toggleTimer(){timer.running=!timer.running;$('#timerStart').textContent=timer.running?'Pause':'Start';clearInterval(interval);if(timer.running){if(audioCtx?.state==='suspended')audioCtx.resume();interval=setInterval(()=>{timer.remaining--;const oneMinuteAlert=[120,180,300].includes(timer.total)&&timer.remaining===60;if(oneMinuteAlert){if(navigator.vibrate)navigator.vibrate(120);beep(880,.16,1)}if(timer.remaining===0){if(navigator.vibrate)navigator.vibrate([180,120,180]);beep(620,.18,2);timer.running=false;clearInterval(interval);$('#timerStart').textContent='Start'}if(timer.remaining<0)timer.remaining=0;renderTimer();},1000)}}
+function toolTimer(){timer.running=false;if(interval)clearInterval(interval);releaseTimerWakeLock();openModal(`<h2 id="modalTitle">Presentation Timer</h2><div class="tabs"><button class="tab" data-preset="30">30 sec</button><button class="tab" data-preset="60">1 min</button><button class="tab" data-preset="120">2 min</button><button class="tab active" data-preset="180">3 min</button><button class="tab" data-preset="300">5 min</button></div><div id="timerRing" class="timer-ring"><div id="timerDisplay" class="timer-display">03:00</div></div><div class="controls"><button class="btn green" id="timerStart">Start</button><button class="btn ghost" id="timerTestSound">Test Sound</button><button class="btn ghost" id="timerReset">Reset</button></div><p class="muted center">For 2, 3 and 5 minute timers: one bell at 1 minute remaining. All timers: two bells at time up. On iPhone, tap Test Sound once before a presentation to confirm audible playback.</p>`);timer={total:180,remaining:180,running:false};renderTimer();$$('[data-preset]').forEach(b=>b.onclick=()=>{timer.total=timer.remaining=+b.dataset.preset;$$('[data-preset]').forEach(x=>x.classList.toggle('active',x===b));renderTimer()});$('#timerStart').onclick=toggleTimer;$('#timerTestSound').onclick=async()=>{await unlockTimerAudio();beep(880,.18,1)};$('#timerReset').onclick=()=>{timer.remaining=timer.total;timer.running=false;clearInterval(interval);releaseTimerWakeLock();$('#timerStart').textContent='Start';renderTimer()};}
+async function unlockTimerAudio(){try{const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)return false;audioCtx=audioCtx||new Ctx();if(audioCtx.state==='suspended')await audioCtx.resume();const o=audioCtx.createOscillator(),g=audioCtx.createGain();g.gain.value=.0001;o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+.02);return true}catch(e){console.warn('Timer audio unlock failed',e);return false}}
+function beep(freq=880,duration=.16,count=1){try{const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)return;audioCtx=audioCtx||new Ctx();if(audioCtx.state==='suspended')audioCtx.resume().catch(()=>{});let t=audioCtx.currentTime+.02;for(let i=0;i<count;i++){const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='sine';o.frequency.value=freq;o.connect(g);g.connect(audioCtx.destination);g.gain.setValueAtTime(.22,t);g.gain.exponentialRampToValueAtTime(.001,t+duration);o.start(t);o.stop(t+duration);t+=duration+.14}}catch(e){console.warn('Timer beep failed',e)}}
+async function requestTimerWakeLock(){try{if('wakeLock' in navigator&&!timerWakeLock)timerWakeLock=await navigator.wakeLock.request('screen')}catch(e){console.warn('Wake lock unavailable',e)}}
+function releaseTimerWakeLock(){try{timerWakeLock?.release?.()}catch(_e){}timerWakeLock=null}
+async function toggleTimer(){timer.running=!timer.running;$('#timerStart').textContent=timer.running?'Pause':'Start';clearInterval(interval);if(timer.running){await unlockTimerAudio();requestTimerWakeLock();interval=setInterval(()=>{timer.remaining--;const oneMinuteAlert=[120,180,300].includes(timer.total)&&timer.remaining===60;if(oneMinuteAlert){if(navigator.vibrate)navigator.vibrate(120);beep(880,.16,1)}if(timer.remaining===0){if(navigator.vibrate)navigator.vibrate([180,120,180]);beep(620,.18,2);timer.running=false;clearInterval(interval);releaseTimerWakeLock();$('#timerStart').textContent='Start'}if(timer.remaining<0)timer.remaining=0;renderTimer();},1000)}else{releaseTimerWakeLock()}}
 
 function renderTimer(){const d=$('#timerDisplay'),r=$('#timerRing');if(!d)return;const m=Math.floor(timer.remaining/60),s=timer.remaining%60;d.textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;r.classList.toggle('warning',timer.remaining<=60&&timer.remaining>30);r.classList.toggle('danger',timer.remaining<=30&&timer.remaining>0);r.classList.toggle('done',timer.remaining===0)}
 

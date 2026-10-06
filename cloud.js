@@ -255,6 +255,45 @@
     if(error) throw error;
     return data;
   }
+  function urlBase64ToUint8Array(base64String) {
+    const padding='='.repeat((4-base64String.length%4)%4);
+    const base64=(base64String+padding).replace(/-/g,'+').replace(/_/g,'/');
+    const raw=atob(base64);return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+  }
+  async function getPushSubscription(){
+    if(!('serviceWorker' in navigator)||!('PushManager' in window))return null;
+    const reg=await navigator.serviceWorker.ready;
+    return await reg.pushManager.getSubscription();
+  }
+  async function enablePushNotifications(vapidPublicKey){
+    if(!('Notification' in window)||!('serviceWorker' in navigator)||!('PushManager' in window))throw new Error('Push notifications are not supported on this device.');
+    const permission=await Notification.requestPermission();
+    if(permission!=='granted')return permission;
+    const reg=await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(vapidPublicKey)});
+    const j=sub.toJSON();
+    const {error}=await client.from('push_subscriptions').upsert({
+      profile_id:session.user.id,endpoint:j.endpoint,p256dh:j.keys?.p256dh,auth:j.keys?.auth,user_agent:navigator.userAgent,updated_at:new Date().toISOString()
+    },{onConflict:'endpoint'});
+    if(error)throw error;
+    return 'granted';
+  }
+  async function disablePushNotifications(){
+    const sub=await getPushSubscription();if(!sub)return false;
+    const endpoint=sub.endpoint;
+    try{await sub.unsubscribe();}catch(_e){}
+    const {error}=await client.from('push_subscriptions').delete().eq('profile_id',session.user.id).eq('endpoint',endpoint);
+    if(error)throw error;
+    return true;
+  }
+  async function triggerPush(action,payload={}){
+    const {data,error}=await client.functions.invoke('push-notify-v1',{body:{action,...payload}});
+    if(error)throw error;
+    if(data?.error)throw new Error(data.error);
+    return data;
+  }
+
   async function sendMessage(type,otherId,text) {
     let convId;
     if(type==='team') {
@@ -262,9 +301,10 @@
     } else {
       const {data,error}=await client.rpc('ensure_direct_conversation',{other_profile:otherId}); if(error) throw error; convId=data;
     }
-    const {error}=await client.from('messages').insert({conversation_id:convId,sender_id:session.user.id,body:text});
+    const {data:message,error}=await client.from('messages').insert({conversation_id:convId,sender_id:session.user.id,body:text}).select('id').single();
     if(error) throw error;
     await client.from('conversation_members').update({last_read_at:new Date().toISOString()}).eq('conversation_id',convId).eq('profile_id',session.user.id);
+    try{await triggerPush('message',{messageId:message.id})}catch(e){console.warn('Push notification dispatch failed',e)}
   }
   async function markConversationRead(convId) {
     if(!convId) return;
@@ -276,8 +316,9 @@
     const {error}=await client.from('announcement_reads').upsert(rows,{onConflict:'announcement_id,profile_id'}); if(error) throw error;
   }
   async function createAnnouncement(title,body) {
-    const {error}=await client.from('announcements').insert({title,body,is_active:true,created_by:session.user.id});
+    const {data:announcement,error}=await client.from('announcements').insert({title,body,is_active:true,created_by:session.user.id}).select('id').single();
     if(error) throw error;
+    try{await triggerPush('announcement',{announcementId:announcement.id})}catch(e){console.warn('Push notification dispatch failed',e)}
   }
   async function updateAnnouncement(id,{title,body}) {
     const {error}=await client.from('announcements').update({title,body}).eq('id',id);
@@ -493,7 +534,7 @@
   function getConfig(){ return cfg(); }
 
   window.MayoCloud={
-    configured,wantsCloud,init,sendMagicLink,signInWithPassword,requestPasswordReset,updatePassword,signUpWithPassword,signOut,getSession,loadState,completeMission,undoMission,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,updateAnnouncement,setAnnouncementActive,deleteAnnouncement,createMission,updateMission,setMissionActive,deleteMission,createSchedule,updateSchedule,deleteSchedule,createTeam,renameTeam,deleteTeam,setParticipantTeam,applyTeamAssignments,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,updatePoll,setPollActive,deletePoll,closePoll,reopenPoll,votePoll,adminUserRequest,subscribe,
+    configured,wantsCloud,init,sendMagicLink,signInWithPassword,requestPasswordReset,updatePassword,signUpWithPassword,signOut,getSession,loadState,completeMission,undoMission,getPushSubscription,enablePushNotifications,disablePushNotifications,sendMessage,markConversationRead,markAnnouncementsRead,createAnnouncement,updateAnnouncement,setAnnouncementActive,deleteAnnouncement,createMission,updateMission,setMissionActive,deleteMission,createSchedule,updateSchedule,deleteSchedule,createTeam,renameTeam,deleteTeam,setParticipantTeam,applyTeamAssignments,updateProfile,giveKudos,toggleScheduleBookmark,createPoll,updatePoll,setPollActive,deletePoll,closePoll,reopenPoll,votePoll,adminUserRequest,subscribe,
     saveConfig,clearConfig,getConfig,
     get client(){return client;},get session(){return session;},get lastAuthEvent(){return lastAuthEvent;}
   };
